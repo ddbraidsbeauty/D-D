@@ -1,0 +1,40 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#171511">
+  <title>D&D Braids Beauty</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:ital,wght@0,600;1,600&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="publicRoot">
+  <header class="top glass">
+    <a class="brand" href="#home"><b>D&D</b><span>BRAIDS <i>Beauty</i></span></a>
+    <nav><a href="#home">Início</a><a href="#catalog">Procedimentos</a><a href="#booking">Agendar</a><a href="#account">Minha conta</a></nav>
+    <a class="btn gold" href="#booking">Agendar horário</a>
+  </header>
+  <main>
+    <section id="home" class="screen active"><div class="hero wrap"><div><small>✦ BELEZA COM IDENTIDADE</small><h1>Tranças que <em>realçam</em> quem você é.</h1><p>Explore estilos, personalize seu atendimento e envie sua solicitação em poucos passos.</p><div class="actions"><a class="btn gold" href="#catalog">Ver catálogo →</a><a class="btn" href="#booking">Agendar</a></div></div><div class="heroimg"><img id="heroImage" alt="D&D Braids"><div class="float glass">Seu estilo.<b>Seu momento.</b></div></div></div><div class="wrap block"><small>NOSSAS PROFISSIONAIS</small><h2 id="homeProTitle">Profissionais</h2><div id="homePros" class="grid2"></div></div><div class="wrap block"><small>DESTAQUES</small><h2>Explore o catálogo.</h2><div id="featured" class="cards"></div></div></section>
+    <section id="catalog" class="screen wrap page"><small>CATÁLOGO</small><h1>Escolha seu procedimento.</h1><div class="catalog-layout"><aside class="filterbox glass"><b>Filtros</b><div id="categoryFilters"></div></aside><div><input id="catalogSearch" class="field" placeholder="Buscar procedimento..."><div id="catalogCards" class="cards"></div></div></div></section>
+    <section id="booking" class="screen wrap page"><small>AGENDAMENTO</small><h1>Monte seu atendimento.</h1><div class="glass panel"><div class="steps"><b id="stepLabel"></b><span id="stepDots"></span></div><div id="bookingBody"></div><div class="between booking-actions"><button class="btn" id="backBtn">Voltar</button><button class="btn gold" id="nextBtn">Continuar →</button></div></div></section>
+    <section id="account" class="screen wrap page"><small>MINHA CONTA</small><h1>Portal Cliente</h1><p class="muted">Acompanhe seus atendimentos, solicitações e avisos em um só lugar.</p><div id="accountAuthControls" class="account-auth-controls" aria-live="polite"></div><h2>Seus agendamentos</h2><input id="accountPhone" type="hidden"><button id="loadAccount" class="hidden" type="button">Atualizar</button><div id="accountList"></div></section>
+    <section id="special-consent" class="screen wrap page"><small>CIÊNCIA E CONSENTIMENTO ESPECÍFICO</small><h1>Antes de continuar.</h1><div id="specificConsentBody"></div></section>
+  </main>
+  <footer><div class="brand"><b>D&D</b><span>BRAIDS <i>Beauty</i></span></div><span>Beleza • Identidade • Liberdade</span><span class="dev-credit">Sistema desenvolvido por OneLine</span></footer>
+</div>
+
+<div id="adminRoot" class="admin-root hidden"><aside id="adminSidebar" class="admin-sidebar glass"><div class="sidebar-head"><div class="brand"><b>D&D</b><span>BRAIDS <i>Admin</i></span></div><button class="iconbtn" id="toggleSidebar" title="Recolher menu">☰</button></div><nav id="adminNav" class="admin-nav"></nav></aside><div class="admin-main"><header class="admintop glass"><button class="btn mobile" id="adminMenu">☰</button><div><small>PAINEL ADMINISTRATIVO</small><b id="adminTopTitle">Visão geral</b></div><div class="actions"><button class="btn" id="viewPublic">Ver site</button><button class="btn danger" id="logoutAdmin">Sair</button></div></header><main class="adminwrap"><section id="adminModule"><div class="between modulehead"><div><small>MÓDULO</small><h1 id="moduleTitle">Visão geral</h1></div></div><div id="moduleBody"></div></section></main></div></div>
+
+<div id="siteNotice" class="site-notice" role="status" aria-live="polite"><div class="glass notice-card"><b id="noticeTitle">Tudo certo</b><p id="noticeText"></p><button class="btn gold" id="noticeClose">OK</button></div></div>
+<div id="modal" class="modal"><div class="glass modalbox"><div class="between"><h2 id="modalTitle">Editar</h2><button class="btn" id="closeModal">×</button></div><div id="modalBody"></div></div></div>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="backend.js" defer></script>
+<script src="logic.js" defer></script>
+<script src="rc7-ui.js" defer></script>
+<script src="app.js" defer></script>
+</body>
+</html>

@@ -1,0 +1,1433 @@
+[
+  {
+    "module": "overview",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Abrir Financeiro",
+    "id": "",
+    "data": [
+      "data-go"
+    ],
+    "event": true
+  },
+  {
+    "module": "requests",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "Buscar cliente...",
+    "id": "requestSearch",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "‹",
+    "id": "",
+    "data": [
+      "data-agenda-nav"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "›",
+    "id": "",
+    "data": [
+      "data-agenda-nav"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "1",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "2",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "3",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "4",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "5",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "6",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "7",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "8",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "9",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "10",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "11",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "12",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "13",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "14",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "15",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "16",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "17",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "18",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "19",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "20",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "21",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "22",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "23",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "24",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "25",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "26",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "27",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "28",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "29",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "30",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "31",
+    "id": "",
+    "data": [
+      "data-agenda-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Hoje",
+    "id": "",
+    "data": [
+      "data-agenda-today"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "SELECT",
+    "type": "select-one",
+    "label": "Todas as profissionaisDany",
+    "id": "agendaProFilter",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Novo agendamento",
+    "id": "",
+    "data": [
+      "data-manual-appointment"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Oferecer vaga",
+    "id": "",
+    "data": [
+      "data-offer-open-slot"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Bloquear esta data",
+    "id": "",
+    "data": [
+      "data-block-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "bookings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Editar horários da profissional",
+    "id": "",
+    "data": [
+      "data-edit-hours"
+    ],
+    "event": true
+  },
+  {
+    "module": "clients",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "Buscar cliente ou WhatsApp",
+    "id": "clientSearch",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Novo procedimento",
+    "id": "",
+    "data": [
+      "data-new-procedure"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Editar",
+    "id": "",
+    "data": [
+      "data-edit-procedure"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Métodos",
+    "id": "",
+    "data": [
+      "data-methods"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Novo material",
+    "id": "",
+    "data": [
+      "data-new-material"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Editar",
+    "id": "",
+    "data": [
+      "data-edit-material"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Editar",
+    "id": "",
+    "data": [
+      "data-edit-material"
+    ],
+    "event": true
+  },
+  {
+    "module": "catalog",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Novo acessório",
+    "id": "",
+    "data": [
+      "data-new-accessory"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "checkbox",
+    "label": "financePrintDetails",
+    "id": "financePrintDetails",
+    "data": [],
+    "event": false
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Imprimir este dia",
+    "id": "",
+    "data": [
+      "data-print-day"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Imprimir relatório",
+    "id": "",
+    "data": [
+      "data-print-period"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Movimentações financeiras",
+    "id": "",
+    "data": [
+      "data-fin-mode"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Atendimentos",
+    "id": "",
+    "data": [
+      "data-fin-mode"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "SELECT",
+    "type": "select-one",
+    "label": "Todas as profissionaisDany",
+    "id": "financePro",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "date",
+    "label": "financeFrom",
+    "id": "financeFrom",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "date",
+    "label": "financeTo",
+    "id": "financeTo",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Mês inteiro",
+    "id": "",
+    "data": [
+      "data-fin-clear-range"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "‹",
+    "id": "",
+    "data": [
+      "data-fin-nav"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "›",
+    "id": "",
+    "data": [
+      "data-fin-nav"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "1",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "2",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "3",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "4",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "5",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "6",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "7",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "8",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "9",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "10",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "11",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "12",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "13",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "14",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "15",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "16",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "17",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "18",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "19",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "20",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "21",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "22",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "23",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "24",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "25",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "26",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "27",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "28",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "29",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "30",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "31",
+    "id": "",
+    "data": [
+      "data-fin-date"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "+ Novo procedimento",
+    "id": "",
+    "data": [
+      "data-go"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "Buscar procedimento",
+    "id": "feeSearch",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "SELECT",
+    "type": "select-one",
+    "label": "Todas as categoriasTranças",
+    "id": "feeCategory",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "radio",
+    "label": "",
+    "id": "",
+    "data": [
+      "data-fee-type"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "radio",
+    "label": "",
+    "id": "",
+    "data": [
+      "data-fee-type"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "radio",
+    "label": "",
+    "id": "",
+    "data": [
+      "data-fee-type"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "INPUT",
+    "type": "number",
+    "label": "",
+    "id": "",
+    "data": [
+      "data-fee-value"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Salvar",
+    "id": "",
+    "data": [
+      "data-save-fee"
+    ],
+    "event": true
+  },
+  {
+    "module": "finance",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Ver valores",
+    "id": "",
+    "data": [
+      "data-pro-finance"
+    ],
+    "event": true
+  },
+  {
+    "module": "professionals",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Adicionar profissional",
+    "id": "",
+    "data": [
+      "data-new-professional"
+    ],
+    "event": true
+  },
+  {
+    "module": "professionals",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Editar",
+    "id": "",
+    "data": [
+      "data-edit-professional"
+    ],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "SELECT",
+    "type": "select-one",
+    "label": "Marca d'águaMoldura eleganteAntes / Depois",
+    "id": "postTemplate",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "SELECT",
+    "type": "select-one",
+    "label": "Feed 4:5Story 9:16Quadrado",
+    "id": "postFormat",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "file",
+    "label": "postPhoto1",
+    "id": "postPhoto1",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "file",
+    "label": "postPhoto2",
+    "id": "postPhoto2",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "postTitle",
+    "id": "postTitle",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postZoom1",
+    "id": "postZoom1",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postX1",
+    "id": "postX1",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postY1",
+    "id": "postY1",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Ver foto inteira",
+    "id": "",
+    "data": [
+      "data-fit"
+    ],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postZoom2",
+    "id": "postZoom2",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postX2",
+    "id": "postX2",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "INPUT",
+    "type": "range",
+    "label": "postY2",
+    "id": "postY2",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Ver foto inteira",
+    "id": "",
+    "data": [
+      "data-fit"
+    ],
+    "event": true
+  },
+  {
+    "module": "posts",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Exportar PNG",
+    "id": "",
+    "data": [
+      "data-export-post"
+    ],
+    "event": true
+  },
+  {
+    "module": "history",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "Buscar",
+    "id": "historySearch",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "INPUT",
+    "type": "number",
+    "label": "cancelHours",
+    "id": "cancelHours",
+    "data": [],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "INPUT",
+    "type": "text",
+    "label": "consentVersion",
+    "id": "consentVersion",
+    "data": [],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Configure o texto apresentado à cliente antes do envio da solicitação.",
+    "id": "consentStandardText",
+    "data": [],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "INPUT",
+    "type": "date",
+    "label": "publicSundayDate",
+    "id": "publicSundayDate",
+    "data": [],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "BUTTON",
+    "type": "button",
+    "label": "Adicionar domingo",
+    "id": "",
+    "data": [
+      "data-add-sunday"
+    ],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Salvar regras",
+    "id": "",
+    "data": [
+      "data-save-general"
+    ],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "INPUT",
+    "type": "file",
+    "label": "heroUpload",
+    "id": "heroUpload",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "BUTTON",
+    "type": "button",
+    "label": "Remover",
+    "id": "heroUploadRemove",
+    "data": [],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Salvar imagem",
+    "id": "",
+    "data": [
+      "data-save-hero"
+    ],
+    "event": true
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Recebemos sua solicitação para {procedimento}",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Seu atendimento de {procedimento} com {profis",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}. Seu atendimento de {procedimento} para {data}",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Seu atendimento de {procedimento} foi remarca",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Passando para lembrar do seu atendimento de {",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Surgiu uma vaga com {profissional} para {data",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Revisamos sua ficha de anamnese referente ao ",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "TEXTAREA",
+    "type": "textarea",
+    "label": "Olá {cliente}! Seu reembolso de {valor_reembolso} foi conclu",
+    "id": "",
+    "data": [
+      "data-message"
+    ],
+    "event": false
+  },
+  {
+    "module": "settings",
+    "tag": "BUTTON",
+    "type": "submit",
+    "label": "Salvar mensagens",
+    "id": "",
+    "data": [
+      "data-save-messages"
+    ],
+    "event": true
+  }
+]

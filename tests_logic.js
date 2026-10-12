@@ -1,0 +1,20 @@
+const assert=require('node:assert/strict');const L=require('./logic');let count=0;function test(name,fn){fn();count++;console.log('✓ '+name)}
+const requirements=[{service_id:'S',method_id:null,variation_id:null,material_id:'J',estimated_quantity:2},{service_id:'S',method_id:'M',variation_id:'V',material_id:'J',estimated_quantity:3},{service_id:'S',method_id:'M',variation_id:'V',material_id:'C',estimated_quantity:2}];
+const materials=[{id:'J',name:'Jumbo',variants:[{id:'v1',color:'1B',size:'60'},{id:'v2',color:'27',size:'80'}]},{id:'C',name:'Cacheado',variants:[{id:'v3',color:'1B',size:'long'}]}];
+const prices=[{professional_id:'D',material_variant_id:'v1',discount_unit_amount:18},{professional_id:'D',material_variant_id:'v2',discount_unit_amount:24},{professional_id:'D',material_variant_id:'v3',discount_unit_amount:15}];
+const b={serviceId:'S',methodId:'M',variationId:'V',professionalId:'D',materialChoices:{J:'v1',C:'v3'}};
+test('regra específica substitui global sem duplicar material',()=>{let r=L.requirementsFor(requirements,b);assert.equal(r.length,2);assert.equal(r.find(x=>x.material_id==='J').quantity,3)});
+test('desconto soma 3x18 + 2x15',()=>{let rows=L.resolveMaterials({requirements,materials,prices,booking:b});assert.deepEqual(L.quote({base:280,materials:rows,bringsOwn:true,fee:{type:'percent',value:10}}),{original:280,discount:84,final:196,deposit:19.6})});
+test('sem materiais próprios não há desconto',()=>assert.equal(L.quote({base:280,materials:[],bringsOwn:false}).final,280));
+test('cor diferente altera preço',()=>{let rows=L.resolveMaterials({requirements,materials,prices,booking:{...b,materialChoices:{J:'v2',C:'v3'}}});assert.equal(L.quote({base:280,materials:rows,bringsOwn:true}).discount,102)});
+test('sem preço bloqueia desconto e nunca supõe zero',()=>{let rows=L.resolveMaterials({requirements,materials,prices:[],booking:b});assert.throws(()=>L.quote({base:280,materials:rows,bringsOwn:true}),/sem preço/)});
+test('sem variante bloqueia desconto',()=>{let rows=L.resolveMaterials({requirements,materials,prices,booking:{...b,materialChoices:{J:'invalid',C:'v3'}}});assert.throws(()=>L.quote({base:280,materials:rows,bringsOwn:true}))});
+test('desconto maior que procedimento bloqueia',()=>assert.throws(()=>L.quote({base:20,bringsOwn:true,materials:[{valid:true,unitPrice:21,quantity:1}]})));
+test('preço fixo do sinal não supera total',()=>assert.equal(L.quote({base:20,fee:{type:'fixed',value:30}}).deposit,20));
+test('créditos monetários arredondam em centavos',()=>assert.equal(L.quote({base:150.1,extras:0.2}).final,150.3));
+const wait=[{id:1,joined_at:'2026-10-09',duration_minutes:240,status:'waiting'},{id:2,joined_at:'2026-10-08',duration_minutes:120,status:'waiting'},{id:3,joined_at:'2026-10-07',duration_minutes:60,status:'resolved'}];
+test('fila só mostra quem cabe e espera',()=>assert.deepEqual(L.eligibleWaitlist(wait,180).map(x=>x.id),[2]));
+test('fila ordena sem mudar os dados',()=>assert.deepEqual(L.eligibleWaitlist(wait,null,'shortest').map(x=>x.id),[2,1]));
+test('proposta aceita uma só transição',()=>{assert.equal(L.canTransitionOffer('proposed','accepted'),true);assert.equal(L.canTransitionOffer('accepted','accepted'),false)});
+test('validar chaves Pix sem armazenar no navegador',()=>{assert.equal(L.pixKeyValid('email','x@y.com'),true);assert.equal(L.pixKeyValid('email','invalid'),false)});
+console.log(`${count} testes unitários aprovados.`);

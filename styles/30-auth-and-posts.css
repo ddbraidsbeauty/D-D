@@ -1,0 +1,35 @@
+/* RC3 — acabamento integrado: autenticação, criador de posts e hitboxes */
+.auth-dialog{display:grid;gap:18px;max-width:560px;margin:auto}
+.auth-copy{margin:0;max-width:48ch}
+.auth-form{display:grid;gap:14px}
+.auth-form label{display:grid;gap:7px;font-weight:800}
+.auth-form input{width:100%;min-height:48px;padding:13px 14px}
+.auth-actions{display:grid;grid-template-columns:1fr 1fr;gap:10px;align-items:center;padding-top:2px}
+.auth-actions .btn{width:100%;min-height:46px}
+.auth-actions .linkbtn{grid-column:1/-1;justify-self:center;min-height:40px;padding:8px 12px}
+
+.post-creator-controls{display:grid;gap:20px}
+.post-creator-head h2{margin-bottom:4px}
+.post-creator-head p{margin:0}
+.post-creator-fields{display:grid;gap:14px}
+.post-creator-fields label{display:grid;gap:7px;font-weight:800}
+.post-creator-fields input,.post-creator-fields select{width:100%}
+.before-after-controls{margin-top:2px}
+.photo-control-card{gap:12px}
+.photo-control-card label{display:grid;gap:7px}
+.post-export-row{display:flex;justify-content:flex-end;padding-top:2px}
+.post-export-row .btn{min-width:170px}
+
+/* Áreas clicáveis coerentes com o desenho visível */
+.btn,.chip,.visual-choice,.accessory-option,.material-option,.nav-item,.day,.iconbtn,.linkbtn{position:relative}
+.btn::before,.chip::before,.visual-choice::before,.accessory-option::before,.material-option::before,.nav-item::before,.day::before,.iconbtn::before,.linkbtn::before{content:"";position:absolute;inset:0;border-radius:inherit;pointer-events:none}
+.btn:focus-visible,.chip:focus-visible,.visual-choice:focus-visible,.accessory-option:focus-visible,.material-option:focus-visible,.nav-item:focus-visible,.day:focus-visible,.iconbtn:focus-visible,.linkbtn:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+@media(max-width:700px){
+  .auth-dialog{gap:15px}
+  .auth-actions{grid-template-columns:1fr}
+  .auth-actions .linkbtn{grid-column:auto;width:100%}
+  .post-creator-controls{gap:16px}
+  .post-export-row .btn{width:100%}
+}
+
