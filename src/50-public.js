@@ -402,7 +402,7 @@ async function nextBookingStep(){
       const session=await ensureClientAuth();
       if(!session?.user?.id)return;
       // An unsuccessful lookup must not silently be interpreted as a new client.
-      const profile=await DDB.myLatestHairProfile();
+      const profile=await DDB.myLatestHairProfile(session.user.id);
       if(currentClientHairProfileOwnerId!==session.user.id){
         booking.hairChange=null;
         booking.anamnesisMode='';
