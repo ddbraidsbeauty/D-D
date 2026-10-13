@@ -16,9 +16,18 @@
     async updatePassword(password){ const {error}=await sb.auth.updateUser({password});if(error)throw error; },
     async changePasswordWithCurrent(currentPassword,newPassword){
       const {data:before,error:sessionError}=await sb.auth.getUser();
-      if(sessionError||!before?.user?.id)throw new Error('Sua sessão expirou. Entre novamente para alterar a senha.');
-      // Supabase Auth (supabase-js v2.102+) validates the existing password
-      // server-side, with no extra login and no password kept in browser storage.
+      const user=before?.user;
+      if(sessionError||!user?.id||!user?.email)
+        throw new Error('Sua sessão expirou. Entre novamente para alterar a senha.');
+      // A password field in updateUser is not proof that GoTrue checked the old
+      // password: some project configurations may accept the update regardless.
+      // First authenticate explicitly with the SAME account, server-side.
+      const {data:verified,error:verifyError}=await sb.auth.signInWithPassword({
+        email:user.email,password:currentPassword
+      });
+      if(verifyError||verified?.user?.id!==user.id)
+        throw new Error('Senha atual incorreta. Verifique e tente novamente.');
+      // Keep the currentPassword attribute for projects supporting this extra check.
       const {error}=await sb.auth.updateUser({password:newPassword,currentPassword});
       if(error){
         if(/current.password|senha atual|invalid password/i.test(String(error.message||'')))
