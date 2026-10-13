@@ -84,12 +84,13 @@
     },
     async reuseHairProfile(appointmentId){ return rpc('reuse_latest_hair_profile',{p_appointment_id:appointmentId}); },
     async acceptConsent(consentId){ return rpc('accept_consent',{p_consent_id:consentId}); },
-    async myLatestHairProfile(){
+    async myLatestHairProfile(expectedClientId=null){
       // The query is scoped by BOTH the verified Auth user ID and the
       // client_hair_profiles SELECT RLS policy; never identify clients by phone.
       const {data:identity,error:identityError}=await sb.auth.getUser();
       const userId=identity?.user?.id;
       if(identityError||!userId)throw new Error('Sua sessão expirou. Entre novamente para consultar sua ficha.');
+      if(expectedClientId&&userId!==expectedClientId)throw new Error('A conta ativa mudou. Entre novamente antes de continuar.');
       const {data,error}=await sb.from('client_hair_profiles')
         .select('id,client_id,version,answers,superseded_at')
         .eq('client_id',userId)
