@@ -114,7 +114,7 @@ async function ensureClientAuth(){const s=await DDB.session();if(s)return s;cons
 let bookingSubmissionPending=false;
 async function submitRequest(){
  if(bookingSubmissionPending)return;
- if(booking.partialSubmissionId)return notify('Uma solicitação já foi criada com ficha incompleta. Não envie novamente; entre em contato com a D&D.','Atendimento pendente');
+ if(booking.partialSubmissionId)return notify('Esta solicitação já existe. Acesse Meus agendamentos e use Completar ficha capilar, sem criar outra solicitação.','Atendimento pendente');
  bookingSubmissionPending=true;
  $('#nextBtn').disabled=true;
  try{
@@ -131,9 +131,103 @@ async function submitRequest(){
   const id=await DDB.submitBooking({p_rc7_idempotency_key:idempotency,p_rc7_material_choices:booking.materialChoices||{},p_professional_id:booking.professionalId,p_service_id:service.id,p_method_id:isMaintenanceBooking(booking)?null:(booking.methodId||null),p_variation_id:isMaintenanceBooking(booking)?null:(booking.variationId||null),p_scheduled_start:when,p_client_name:booking.clientName,p_client_phone:booking.phone,p_client_email:booking.email,p_notes:booking.note||null,p_brings_own_material:booking.materialProvider==='client',p_option_ids:optionIds,p_accessory_ids:isMaintenanceBooking(booking)?[]:(booking.accessoryIds||[]),p_material_variant_id:isMaintenanceBooking(booking)?null:materialVariantId,p_reference_image_path:ref,p_consent_accepted:booking.consentAccepted===true,p_maintenance_of_service_id:p?.special==='maintenance'?(booking.maintenanceTargetId||null):null},booking.anamnesis,booking.anamnesisMode==='reuse');
   // O consentimento persistente será emitido/aceito pelo fluxo seguro do backend; não há INSERT direto em tabela protegida.
   openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); try{localStorage.removeItem(BOOKING_DRAFT_KEY);}catch{} booking=newBooking();stepIndex=0;
- }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação foi criada, mas a ficha capilar não foi salva. Não reenvie: entre em contato com a D&D para completar a ficha.':(e.message||'Não foi possível enviar a solicitação.'),'Erro no agendamento');}
+ }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação já existe. Abra Meus agendamentos e complete a ficha capilar, sem reenviar.':(e.message||'Não foi possível enviar a solicitação. Nenhum novo agendamento foi registrado.'),'Erro no agendamento');}
  finally{bookingSubmissionPending=false;$('#nextBtn').disabled=false;}
 }
+// Completes ONLY an existing incomplete appointment; never creates a new booking
+// or touches an already recorded deposit.
+function openMissingHairProfile(appointmentId){
+  const answers=emptyAnamnesis();
+  // Reuse the existing accessible field markup without changing the current booking.
+  const previous=booking;
+  let form;
+  try{booking={...newBooking(),anamnesis:answers};form=renderAnamnesisStep();}
+  finally{booking=previous;}
+  openModal('Completar ficha capilar',
+    `<p class="muted">A solicitação já foi registrada. Preencha apenas a ficha capilar pendente; nenhum novo horário ou pagamento será criado.</p>${form}<div class="modal-actions"><button type="button" class="btn" id="dismissMissingHair">Voltar</button><button type="button" class="btn gold" id="saveMissingHair">Salvar ficha capilar</button></div>`,
+    root=>{
+      const capture=e=>{
+        const t=e.target;
+        if(t.dataset.an!==undefined){answers[t.dataset.an]=t.value;if(t.dataset.an==='classification')answers.hairType=hairTypeForPattern(t.value);}
+        if(t.matches('[data-an-heat]')) answers.heatUse=$$('[data-an-heat]:checked',root).map(x=>x.value);
+        if(t.matches('[data-an-problem]')) answers.problems=$$('[data-an-problem]:checked',root).map(x=>x.value);
+      };
+      root.addEventListener('input',capture);
+      root.addEventListener('change',capture);
+      $('#dismissMissingHair',root).onclick=closeModal;
+      $('#saveMissingHair',root).onclick=async()=>{
+        const required=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry'];
+        if(required.some(k=>!String(answers[k]||'').trim())||!answers.heatUse.length||!answers.problems.length)
+          return notify('Preencha todos os campos obrigatórios.','Ficha incompleta');
+        if(!HAIR_PATTERNS.includes(String(answers.classification||'').trim().toUpperCase())||answers.hairType!==hairTypeForPattern(answers.classification))
+          return notify('Selecione uma classificação válida (1A a 4C).','Classificação inválida');
+        const button=$('#saveMissingHair',root);button.disabled=true;
+        try{
+          await DDB.completeMissingHairProfile(appointmentId,answers);
+          closeModal();
+          notify('Ficha capilar vinculada ao atendimento existente. Nenhuma nova cobrança foi criada.','Ficha concluída');
+          await renderAccount();
+        }catch(e){console.error(e);notify(e.message||'Não foi possível completar a ficha.','Erro ao salvar');}
+        finally{button.disabled=false;}
+      };
+    }
+  );
+}
+
+// The reset link authenticates a *recovery session*. Never process a normal login
+// as if it granted permission to change a forgotten password.
+function passwordQuality(password){
+  if(password.length<8)return 'Use pelo menos 8 caracteres para a nova senha.';
+  if(password.length>72)return 'Use no máximo 72 caracteres para a senha.';
+  return '';
+}
+function passwordFields(current=false){
+  const prefix=current?'change':'reset';
+  return `<div class="auth-form password-form">${current?`<label>Senha atual<input id="changeCurrentPassword" type="password" autocomplete="current-password" required></label>`:''}<label>Nova senha<input id="${prefix}NewPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label><label>Confirmar nova senha<input id="${prefix}ConfirmPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label><label class="password-show"><input type="checkbox" id="${prefix}ShowPasswordFields"> Mostrar senhas</label><p class="muted">Use pelo menos 8 caracteres. Não compartilhe sua senha com ninguém.</p><p id="${prefix}PasswordFeedback" class="auth-signup-feedback" role="status" aria-live="polite" hidden></p></div>`;
+}
+function initPasswordFields(root,hasCurrent){
+  const prefix=hasCurrent?'change':'reset';
+  const fields=[prefix+'NewPassword',prefix+'ConfirmPassword',...(hasCurrent?['changeCurrentPassword']:[])].map(k=>$('#'+k,root));
+  $('#'+prefix+'ShowPasswordFields',root).onchange=e=>{fields.forEach(input=>input.type=e.target.checked?'text':'password');};
+  return {newPass:()=>fields[0].value,confirm:()=>fields[1].value,current:()=>hasCurrent?$('#changeCurrentPassword',root).value:''};
+}
+function passwordStatus(root,message){ const status=$(root.id==='resetPasswordPanel'?'#resetPasswordFeedback':'#changePasswordFeedback',root);status.hidden=false;status.textContent=message; }
+async function renderResetPassword(){
+  const root=$('#resetPasswordPanel');if(!root)return;
+  if(!passwordRecoveryActive){
+    root.innerHTML='<h2>Link de recuperação necessário</h2><p class="muted">Para sua segurança, solicite o link pelo botão “Esqueci a senha” na tela de login. Se o link expirou, solicite um novo.</p><button class="btn gold" id="resetLoginAction">Ir para minha conta</button>';
+    $('#resetLoginAction',root).onclick=()=>{location.hash='#account';};return;
+  }
+  const session=await DDB.session();
+  if(!session?.user){root.innerHTML='<h2>Link inválido ou expirado</h2><p>Solicite um novo e-mail de recuperação pelo login.</p><a class="btn gold" href="#account">Ir para o login</a>';return;}
+  root.innerHTML='<h2>Crie sua nova senha</h2><p class="muted">Digite sua nova senha para recuperar o acesso à D&D Braids Beauty.</p>'+passwordFields()+'<button class="btn gold" type="button" id="submitResetPassword">Salvar nova senha</button>';
+  const state=initPasswordFields(root,false);
+  $('#submitResetPassword',root).onclick=async()=>{
+    const pwd=state.newPass(),msg=passwordQuality(pwd);if(msg)return passwordStatus(root,msg);
+    if(pwd!==state.confirm())return passwordStatus(root,'As senhas não coincidem.');
+    const button=$('#submitResetPassword',root);button.disabled=true;
+    try{await DDB.updatePassword(pwd);passwordRecoveryActive=false;history.replaceState(null,'',appBaseUrl()+'#account');notify('Sua senha foi redefinida com sucesso.','Senha atualizada');renderPublicRoute();}
+    catch(e){passwordStatus(root,e.message||'Não foi possível redefinir a senha. Tente solicitar um novo link.');}
+    finally{button.disabled=false;}
+  };
+}
+function openChangePassword(){
+  openModal('Segurança da conta',`<p class="muted">Para alterar a senha, confirme sua senha atual e escolha uma nova.</p>${passwordFields(true)}<div class="modal-actions"><button class="btn" id="cancelChangePassword">Voltar</button><button class="btn gold" id="saveChangePassword">Alterar senha</button></div>`,root=>{
+    const state=initPasswordFields(root,true);$('#cancelChangePassword',root).onclick=closeModal;
+    $('#saveChangePassword',root).onclick=async()=>{
+      const oldPass=state.current(),pwd=state.newPass(),msg=passwordQuality(pwd);
+      if(!oldPass)return passwordStatus(root,'Informe a senha atual.');
+      if(msg)return passwordStatus(root,msg);
+      if(pwd!==state.confirm())return passwordStatus(root,'As senhas não coincidem.');
+      if(pwd===oldPass)return passwordStatus(root,'Escolha uma senha diferente da atual.');
+      const button=$('#saveChangePassword',root);button.disabled=true;
+      try{accountPasswordChangeInProgress=true;await DDB.changePasswordWithCurrent(oldPass,pwd);closeModal();notify('Sua senha foi alterada com sucesso.','Segurança');}
+      catch(e){passwordStatus(root,e.message||'Não foi possível alterar a senha. Confira a senha atual.');}
+      finally{accountPasswordChangeInProgress=false;button.disabled=false;}
+    };
+  });
+}
+
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
  // Clear account-only controls before checking the current session.
@@ -143,7 +237,9 @@ async function renderAccount(){
  if(s && controls){
    const email=document.createElement('span');email.className='account-signed-in';email.textContent=s.user?.email||'Conta conectada';
    const out=document.createElement('button');out.type='button';out.id='logoutClient';out.className='btn';out.textContent='Sair da conta';
-   controls.append(email,out);
+   const security=document.createElement('button');security.type='button';security.id='changeClientPassword';security.className='btn';security.textContent='Alterar senha';
+   controls.append(email,security,out);
+   security.onclick=()=>openChangePassword();
    out.onclick=async()=>{
      if(out.disabled)return;out.disabled=true;
      try{
@@ -158,7 +254,7 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${a.deposit_status==='paid'?'Sinal pago ✓':'Sinal pendente'} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=async()=>{try{await DDB.clientCancel(b.dataset.id);renderAccount();notify('Cancelamento registrado.');}catch(e){notify(e.message);}});$$('.account-reschedule').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.requestWaitlist(b.dataset.id);notify('Solicitação registrada na lista de espera.');renderAccount();}catch(e){notify(e.message||'Não foi possível solicitar a remarcação.');}finally{b.disabled=false;}});
+ try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${a.deposit_status==='paid'?'Sinal pago ✓':'Sinal pendente'} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=async()=>{try{await DDB.clientCancel(b.dataset.id);renderAccount();notify('Cancelamento registrado.');}catch(e){notify(e.message);}});$$('.account-complete-hair').forEach(b=>b.onclick=()=>openMissingHairProfile(b.dataset.id));$$('.account-reschedule').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.requestWaitlist(b.dataset.id);notify('Solicitação registrada na lista de espera.');renderAccount();}catch(e){notify(e.message||'Não foi possível solicitar a remarcação.');}finally{b.disabled=false;}});
   await window.DDBraidsRC7?.renderAccount(box,list);}catch(e){box.innerHTML=`<div class="empty-state">Não foi possível carregar seus agendamentos.</div>`;}
 }
 async function renderSpecificConsent(){

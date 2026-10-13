@@ -43,3 +43,26 @@
 .auth-signup-feedback[hidden] {display:none;}
 .auth-signup-feedback strong {display:block;color:var(--text,#f6f0e6);margin-bottom:5px;}
 .auth-signup-feedback p {margin:0;color:var(--muted,#a9a395);overflow-wrap:anywhere;}
+
+/* D&D Braids Beauty 3.0: illustrated, accessible hair pattern selector. */
+.anamnesis-form .hair-selector{grid-column:1/-1;border:0;padding:0;margin:8px 0 20px;min-width:0;}
+.hair-selector legend{font-weight:800;font-size:1.12rem;padding:0 0 8px;}
+.hair-guide{margin:3px 0 15px;line-height:1.55;font-size:13px;}
+.hair-grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px;}
+.hair-choice{display:flex!important;position:relative;flex-direction:column;min-width:0;overflow:hidden;cursor:pointer;border:2px solid var(--line);border-radius:15px;background:var(--solid);transition:border-color .15s,box-shadow .15s,transform .15s;}
+.hair-choice:hover{border-color:var(--gold);transform:translateY(-2px);}
+.hair-choice:has(input:checked){border-color:var(--gold);box-shadow:0 0 0 3px rgba(210,168,87,.24);}
+.hair-choice:has(input:focus-visible){outline:3px solid var(--gold);outline-offset:2px;}
+.hair-choice input{position:absolute;top:12px;right:12px;z-index:1;width:21px!important;height:21px!important;margin:0;accent-color:var(--gold);cursor:pointer;}
+.hair-choice img{display:block;width:100%;height:auto;aspect-ratio:345/250;object-fit:cover;background:#27221d;}
+.hair-choice-label{display:flex;gap:8px;align-items:center;justify-content:center;flex-wrap:wrap;padding:10px 6px;text-align:center;line-height:1.35;color:var(--text);}
+.hair-choice-label strong{font-size:20px;color:var(--gold);}
+.hair-choice-label span{font-size:12px;}
+.password-reset-panel{max-width:600px;margin:24px auto;padding:25px;}
+.password-form{margin:20px 0;}
+.password-form label{display:grid;gap:7px;margin:12px 0;}
+.password-form .password-show{display:flex;align-items:center;gap:8px;}
+.password-show input{width:18px;height:18px;accent-color:var(--gold);}
+.password-form .auth-signup-feedback{margin-top:10px;}
+@media(max-width:700px){.hair-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.hair-choice-label{min-height:64px;gap:4px}.hair-choice-label strong{font-size:18px}.hair-choice-label span{font-size:11px}}
+@media(max-width:370px){.hair-choice-label{display:grid;}.hair-grid{gap:7px}}

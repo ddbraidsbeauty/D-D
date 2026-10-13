@@ -12,7 +12,20 @@
     async signIn(email,password){ const {data,error}=await sb.auth.signInWithPassword({email,password}); if(error) throw error; return data; },
     async signUp(email,password,fullName,redirectTo,pendingDraft=null){ const metadata={full_name:fullName||'Cliente'}; if(pendingDraft?.booking?.procedureId) metadata.ddb_booking_draft=pendingDraft; const {data,error}=await sb.auth.signUp({email,password,options:{data:metadata,...(redirectTo?{emailRedirectTo:redirectTo}:{})}}); if(error) throw error; return data; },
     async signOut(){ const {error}=await sb.auth.signOut(); if(error) throw error; },
-    async resetPassword(email){ const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname+'#account'}); if(error) throw error; },
+    async resetPassword(email){ const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname}); if(error) throw error; },
+    async updatePassword(password){ const {error}=await sb.auth.updateUser({password});if(error)throw error; },
+    async changePasswordWithCurrent(currentPassword,newPassword){
+      const {data:before,error:sessionError}=await sb.auth.getUser();
+      if(sessionError||!before?.user?.id)throw new Error('Sua sessão expirou. Entre novamente para alterar a senha.');
+      // Supabase Auth (supabase-js v2.102+) validates the existing password
+      // server-side, with no extra login and no password kept in browser storage.
+      const {error}=await sb.auth.updateUser({password:newPassword,currentPassword});
+      if(error){
+        if(/current.password|senha atual|invalid password/i.test(String(error.message||'')))
+          throw new Error('Senha atual incorreta. Verifique e tente novamente.');
+        throw error;
+      }
+    },
     async isAdmin(){ try{return !!(await rpc('is_admin'));}catch{return false;} },
     async publicData(){
       const [catalog,professionals,brand,consent,serviceTags,requirements,serviceAccessories,fieldReqs,schedule] = await Promise.all([
@@ -42,22 +55,23 @@
     },
     async availableSlots(professionalId,serviceId,methodId,variationId,date){ return rpc('public_available_slots',{p_professional_id:professionalId,p_service_id:serviceId,p_method_id:methodId||null,p_variation_id:variationId||null,p_date:date}); },
     async createBooking(payload){ if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required'); return rpc('create_booking_request_v3',payload); },
-    normalizeHair(answers){const a=answers||{};return {hair_type:a.hair_type??a.hairType??'',pattern:a.pattern??a.classification??'',natural_color:a.natural_color??a.naturalColor??'',lightening_background:a.lightening_background??a.lighteningBackground??'',density:a.density??'',texture:a.texture??'',characteristic:a.characteristic??'',resistance:a.resistance??'',porosity:a.porosity??'',elasticity:a.elasticity??'',recent_chemistry:a.recent_chemistry??a.recentChemistry??'',chemistry_details:a.chemistry_details??a.chemistryDetails??'',frequent_heat:a.frequent_heat??a.heatUse??[],problems:a.problems??[],other_problems:a.other_problems??a.otherProblems??''};},
+    normalizeHair(answers){const a=answers||{};return {hair_type:a.hair_type??a.hairType??'',pattern:String(a.pattern??a.classification??'').trim().toUpperCase(),natural_color:a.natural_color??a.naturalColor??'',lightening_background:a.lightening_background??a.lighteningBackground??'',density:a.density??'',texture:a.texture??'',characteristic:a.characteristic??'',resistance:a.resistance??'',porosity:a.porosity??'',elasticity:a.elasticity??'',recent_chemistry:a.recent_chemistry??a.recentChemistry??'',chemistry_details:a.chemistry_details??a.chemistryDetails??'',frequent_heat:a.frequent_heat??a.heatUse??[],problems:a.problems??[],other_problems:a.other_problems??a.otherProblems??''};},
     async saveHairProfile(appointmentId,answers){return rpc('save_client_hair_profile',{p_appointment_id:appointmentId,p_answers:this.normalizeHair(answers)});},
     async submitBooking(payload,answers,reuse=false){
       if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required');
-      const own=payload.p_brings_own_material===true;
-      const v3={...payload};delete v3.p_rc7_material_choices;delete v3.p_rc7_idempotency_key;
+      // This RPC makes the appointment AND its hair profile one database transaction.
+      // DO NOT fall back to create_booking_request_v3: that old 2-step path
+      // could leave a paid appointment without an anamnesis.
       try{
-        return await rpc('ddb_create_booking_v7',{p_payload:{...payload,p_profile_answers:this.normalizeHair(answers),p_reuse_profile:reuse}});
+        return await rpc('ddb_submit_booking_atomic_v1',{p_payload:{...payload,p_profile_answers:this.normalizeHair(answers),p_reuse_profile:!!reuse}});
       }catch(e){
-        if(!(e.code==='PGRST202'||String(e.message||'').includes('Could not find the function')))throw e;
-        if(own)throw new Error('A precificação de materiais próprios ainda não está ativada no banco. Solicite à D&D a configuração antes de continuar.');
-        const id=await this.createBooking(v3);
-        try{if(reuse)await this.reuseHairProfile(id);else await this.saveHairProfile(id,answers);}
-        catch(err){err.partialBookingId=id;throw err;}
-        return id;
+        if(e.code==='PGRST202'||String(e.message||'').includes('Could not find the function'))
+          throw new Error('O envio seguro do agendamento ainda não foi ativado no Supabase. Nenhuma solicitação foi criada; avise a D&D.');
+        throw e;
       }
+    },
+    async completeMissingHairProfile(appointmentId,answers){
+      return rpc('ddb_complete_missing_hair_profile_v1',{p_appointment_id:appointmentId,p_answers:this.normalizeHair(answers)});
     },
     async reuseHairProfile(appointmentId){ return rpc('reuse_latest_hair_profile',{p_appointment_id:appointmentId}); },
     async acceptConsent(consentId){ return rpc('accept_consent',{p_consent_id:consentId}); },

@@ -368,11 +368,23 @@ let catalogCategory = 'Todos';
 let booking = newBooking();
 let stepIndex = 0;
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
+const HAIR_PATTERNS=['1A','1B','1C','2A','2B','2C','3A','3B','3C','4A','4B','4C'];
+const HAIR_DESCRIPTIONS={ '1A':'Liso reto','1B':'Liso com leve corpo','1C':'Liso encorpado','2A':'Ondulado suave','2B':'Ondulado definido','2C':'Ondulado forte','3A':'Cacheado solto','3B':'Cacheado definido','3C':'Cacheado fechado','4A':'Crespo em espiral','4B':'Crespo em Z','4C':'Crespo denso' };
+function hairTypeForPattern(code){ return {1:'Liso',2:'Ondulado',3:'Cacheado',4:'Crespo'}[String(code||'').charAt(0)]||''; }
+function hairPatternGrid(selected=''){
+  return `<fieldset class="hair-selector"><legend>Classificação capilar *</legend><p class="muted hair-guide">Compare os formatos dos fios e escolha o mais parecido com seu cabelo natural. As imagens são ilustrativas; a profissional poderá revisar sua avaliação.</p><div class="hair-grid" role="radiogroup" aria-label="Classificação capilar">${HAIR_PATTERNS.map(code=>`<label class="hair-choice"><input type="radio" name="hairPattern" data-an="classification" value="${code}" ${selected===code?'checked':''} required><img src="assets/hair-patterns/${code.toLowerCase()}.webp" width="345" height="250" loading="lazy" alt="Exemplo de cabelo ${HAIR_DESCRIPTIONS[code]}"><span class="hair-choice-label"><strong>${code}</strong><span>${HAIR_DESCRIPTIONS[code]}</span></span></label>`).join('')}</div><p class="muted hair-guide">Se tiver dúvida, escolha a opção mais próxima. A classificação é apenas uma referência visual, não um diagnóstico.</p></fieldset>`;
+}
+
 const BOOKING_DRAFT_TTL=24*60*60*1000;
 const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialId','color','materialProvider','professionalId','date','period','time'];
 let publicCatalogReady=false;
 let authRecoveryStarted=false;
 let authRecoveryCompleted=false;
+// Keep recovery separate from signup callbacks, which may resume an appointment.
+let passwordRecoveryActive=/(?:^|[&#])type=recovery(?:&|$)/.test(location.hash);
+let accountPasswordChangeInProgress=false;
+let passwordRecoveryError=/(?:^|[&#])error_code=/.test(location.hash) ? 'Este link não pôde ser utilizado. Solicite um novo e-mail de recuperação.' : '';
+
 function cleanBookingDraft(input={}) {
   const draft={};
   for(const key of BOOKING_DRAFT_FIELDS){
@@ -448,7 +460,7 @@ function hasAuthCallback(){
 async function finishAuthCallback(){
   // Wait for the real catalog before evaluating stage indices, and never discard
   // a draft if auth isn't ready yet. onAuthStateChange can retry later.
-  if(authRecoveryStarted||authRecoveryCompleted||!publicCatalogReady)return;
+  if(accountPasswordChangeInProgress||passwordRecoveryActive||routeHash()==='reset-password'||authRecoveryStarted||authRecoveryCompleted||!publicCatalogReady)return;
   authRecoveryStarted=true;
   const callback=hasAuthCallback();
   try{
@@ -477,7 +489,12 @@ function initPublic(){
   // Run even when the SDK has already cleaned the confirmation hash.
   finishAuthCallback();
   DDB.sb.auth.onAuthStateChange((event,session)=>{
-    if((event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user){
+    if(event==='PASSWORD_RECOVERY'){
+      passwordRecoveryActive=true;
+      setTimeout(()=>{ history.replaceState(null,'',appBaseUrl()+'#reset-password');renderPublicRoute(); },0);
+      return;
+    }
+    if(!accountPasswordChangeInProgress && (event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user){
       // Defer out of the auth callback to avoid re-entering Supabase's lock.
       setTimeout(finishAuthCallback,0);
     }
@@ -490,6 +507,9 @@ function initPublic(){
   $('#bookingBody').addEventListener('input',handleBookingInput);
   $('#bookingBody').addEventListener('change',handleBookingInput);
   window.addEventListener('hashchange',renderPublicRoute);
+  if(passwordRecoveryError){
+    setTimeout(()=>{notify(passwordRecoveryError,'Link inválido');},150);
+  }
   renderPublicRoute();
 }
 
@@ -502,6 +522,7 @@ function renderPublicRoute(){
   if(route==='catalog') renderCatalog();
   if(route==='booking') renderBooking();
   if(route==='account') renderAccount();
+  if(route==='reset-password') renderResetPassword();
   if(route==='special-consent') renderSpecificConsent();
   window.scrollTo({top:0,behavior:'instant'});
 }
@@ -654,7 +675,7 @@ function renderAnamnesisStep(){
   if(old && booking.hairChange===null) return `<div class="glass nested"><h2>Já encontramos uma ficha anterior.</h2><p>Houve alguma alteração capilar recente ou você realizou algum procedimento químico desde sua última avaliação?</p><div class="actions"><button type="button" class="btn" data-hair-change="no">Não</button><button type="button" class="btn gold" data-hair-change="yes">Sim</button></div></div>`;
   if(old && booking.hairChange==='no'){ booking.anamnesisMode='reuse'; return `<div class="anamnesis-summary"><h2>Ficha atual será reutilizada</h2><p class="muted">A profissional ainda poderá revisar e atualizar observações.</p>${anamSummary(old)}</div>`; }
   booking.anamnesisMode='new'; const x=booking.anamnesis;
-  return `<div class="form-grid anamnesis-form"><label>Tipo *<select data-an="hairType"><option></option>${['Liso','Ondulado','Cacheado','Crespo'].map(v=>`<option ${x.hairType===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Classificação *<input data-an="classification" value="${esc(x.classification)}" placeholder="1A–4C"></label><label>Cor natural *<select data-an="naturalColor"><option></option>${['1 — Preto','2 — Castanho muito escuro','3 — Castanho escuro','4 — Castanho médio','5 — Castanho claro','6 — Loiro escuro','7 — Loiro médio','8 — Loiro claro','9 — Loiro muito claro','10 — Loiro claríssimo','Não identificado'].map(v=>`<option ${x.naturalColor===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Fundo/clareamento *<select data-an="lighteningBackground"><option></option>${['Vermelho escuro','Vermelho','Vermelho-alaranjado','Alaranjado','Amarelo-alaranjado','Amarelo','Amarelo claro/pálido','Não se aplica / cabelo não clareado','Não identificado'].map(v=>`<option ${x.lighteningBackground===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Densidade *<select data-an="density"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.density===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Textura *<select data-an="texture"><option></option>${['Fino','Médio','Grosso'].map(v=>`<option ${x.texture===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Característica *<select data-an="characteristic"><option></option>${['Normal','Seco','Oleoso','Misto'].map(v=>`<option ${x.characteristic===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Resistência *<select data-an="resistance"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.resistance===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Porosidade *<select data-an="porosity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.porosity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Elasticidade *<select data-an="elasticity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.elasticity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Química recente *<select data-an="recentChemistry"><option></option>${['Nenhuma','Permanente','Alisamento','Coloração','Reflexos','Outra'].map(v=>`<option ${x.recentChemistry===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Detalhes da química<input data-an="chemistryDetails" value="${esc(x.chemistryDetails)}"></label><fieldset><legend>Uso frequente *</legend><div class="checkgrid">${['Nenhum','Secador','Prancha','Modelador'].map(v=>`<label><input type="checkbox" data-an-heat value="${v}" ${x.heatUse.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><fieldset><legend>Pontos informados/observados *</legend><div class="checkgrid">${['Nenhum','Queda','Seborreia/Caspa','Dermatite','Tricoptilose','Triconodose','Tricorrexis Nodosa','Tricotilomania','Pediculose'].map(v=>`<label><input type="checkbox" data-an-problem value="${v}" ${x.problems.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><label>Outros pontos<textarea data-an="otherProblems">${esc(x.otherProblems)}</textarea></label></div>`;
+  return `<div class="form-grid anamnesis-form">${hairPatternGrid(String(x.classification||'').toUpperCase())}<label>Cor natural *<select data-an="naturalColor"><option></option>${['1 — Preto','2 — Castanho muito escuro','3 — Castanho escuro','4 — Castanho médio','5 — Castanho claro','6 — Loiro escuro','7 — Loiro médio','8 — Loiro claro','9 — Loiro muito claro','10 — Loiro claríssimo','Não identificado'].map(v=>`<option ${x.naturalColor===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Fundo/clareamento *<select data-an="lighteningBackground"><option></option>${['Vermelho escuro','Vermelho','Vermelho-alaranjado','Alaranjado','Amarelo-alaranjado','Amarelo','Amarelo claro/pálido','Não se aplica / cabelo não clareado','Não identificado'].map(v=>`<option ${x.lighteningBackground===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Densidade *<select data-an="density"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.density===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Textura *<select data-an="texture"><option></option>${['Fino','Médio','Grosso'].map(v=>`<option ${x.texture===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Característica *<select data-an="characteristic"><option></option>${['Normal','Seco','Oleoso','Misto'].map(v=>`<option ${x.characteristic===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Resistência *<select data-an="resistance"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.resistance===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Porosidade *<select data-an="porosity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.porosity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Elasticidade *<select data-an="elasticity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.elasticity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Química recente *<select data-an="recentChemistry"><option></option>${['Nenhuma','Permanente','Alisamento','Coloração','Reflexos','Outra'].map(v=>`<option ${x.recentChemistry===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Detalhes da química<input data-an="chemistryDetails" value="${esc(x.chemistryDetails)}"></label><fieldset><legend>Uso frequente *</legend><div class="checkgrid">${['Nenhum','Secador','Prancha','Modelador'].map(v=>`<label><input type="checkbox" data-an-heat value="${v}" ${x.heatUse.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><fieldset><legend>Pontos informados/observados *</legend><div class="checkgrid">${['Nenhum','Queda','Seborreia/Caspa','Dermatite','Tricoptilose','Triconodose','Tricorrexis Nodosa','Tricotilomania','Pediculose'].map(v=>`<label><input type="checkbox" data-an-problem value="${v}" ${x.problems.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><label>Outros pontos<textarea data-an="otherProblems">${esc(x.otherProblems)}</textarea></label></div>`;
 }
 function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType],['Classificação',x.classification],['Cor',x.naturalColor],['Densidade',x.density],['Textura',x.texture],['Resistência',x.resistance],['Porosidade',x.porosity],['Elasticidade',x.elasticity],['Química',x.recentChemistry]].map(([k,v])=>`<span><b>${k}</b>${esc(v||'—')}</span>`).join('')}</div>`; }
 
@@ -682,7 +703,7 @@ function handleBookingInput(e){
   const t=e.target;
   if(t.dataset.materialVariant!==undefined){booking.materialChoices=booking.materialChoices||{};booking.materialChoices[t.dataset.materialVariant]=t.value;renderBooking();return;}
   if(t.dataset.bookingField!==undefined) booking[t.dataset.bookingField]=t.value;
-  if(t.dataset.an!==undefined) booking.anamnesis[t.dataset.an]=t.value;
+  if(t.dataset.an!==undefined){booking.anamnesis[t.dataset.an]=t.value; if(t.dataset.an==='classification')booking.anamnesis.hairType=hairTypeForPattern(t.value);}
   if(t.matches('[data-an-heat]')) booking.anamnesis.heatUse=$$('[data-an-heat]:checked',$('#bookingBody')).map(x=>x.value);
   if(t.matches('[data-an-problem]')) booking.anamnesis.problems=$$('[data-an-problem]:checked',$('#bookingBody')).map(x=>x.value);
   if(t.matches('[data-consent]')) booking.consentAccepted=t.checked;
@@ -715,7 +736,7 @@ function validateStep(id){
   if(id==='client'&&(!booking.clientName.trim()||phoneKey(booking.phone).length<8)) return 'Preencha nome e WhatsApp corretamente.';
   if(id==='anamnesis'){
     const old=clientCurrentAnamnesis(booking.phone); if(old&&booking.hairChange===null) return 'Informe se houve alteração capilar desde a última avaliação.';
-    if(booking.anamnesisMode==='new'||!old){ const x=booking.anamnesis; const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry']; if(keys.some(k=>!String(x[k]||'').trim())||!x.heatUse.length||!x.problems.length) return 'Preencha todos os campos obrigatórios da anamnese.'; }
+    if(booking.anamnesisMode==='new'||!old){ const x=booking.anamnesis; const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry']; if(keys.some(k=>!String(x[k]||'').trim())||!x.heatUse.length||!x.problems.length) return 'Preencha todos os campos obrigatórios da anamnese.'; if(!HAIR_PATTERNS.includes(String(x.classification||'').trim().toUpperCase())||x.hairType!==hairTypeForPattern(x.classification))return 'Escolha uma classificação capilar nas imagens.'; }
   }
   if(id==='consent'&&!booking.consentAccepted) return 'Você precisa ler e aceitar o consentimento para continuar.';
   return '';
@@ -804,7 +825,8 @@ function requestRow(a){
   const pro=getProfessional(a.professionalId); let actions='';
   if(a.status==='awaiting_fee') actions=`<button class="btn gold" data-send-fee="${a.id}">Enviar cobrança</button>`;
   if(a.status==='fee_sent') actions=`<button class="btn gold" data-fee-received="${a.id}">Confirmar sinal recebido</button>`;
-  if(['pending_review','acknowledged'].includes(a.status)) actions=`<button class="btn" data-review-anam="${a.id}">Revisar anamnese</button>${a.anamnesisReviewed?`<button class="btn gold" data-confirm-request="${a.id}">Confirmar atendimento</button>`:''}<button class="btn" data-nonrecommend="${a.id}">Notificar não recomendação</button>`;
+  if(['pending_review','acknowledged'].includes(a.status)&&!a.anamnesisId) actions='<span class="muted">Ficha capilar pendente: solicitar à cliente que entre em Meus agendamentos e complete a anamnese.</span>';
+  else if(['pending_review','acknowledged'].includes(a.status)) actions=`<button class="btn" data-review-anam="${a.id}">Revisar anamnese</button>${a.anamnesisReviewed?`<button class="btn gold" data-confirm-request="${a.id}">Confirmar atendimento</button>`:''}<button class="btn" data-nonrecommend="${a.id}">Notificar não recomendação</button>`;
   if(a.status==='non_recommended') actions=`<button class="btn" data-review-anam="${a.id}">Ver anamnese</button><span class="muted">Aguardando ciência da cliente.</span>`;
   if(a.status==='reschedule_requested') actions=`<button class="btn gold" data-reschedule="${a.id}">Remarcar</button>`;
   return `<article class="request-card" data-search="${esc((a.clientName+' '+procedureName(a)).toLowerCase())}"><div class="between"><div><b>${esc(a.clientName)}</b><span>${esc(procedureName(a))} • ${esc(pro?.name||'')} • ${fmtDate(a.date)}</span></div><span class="status ${a.status}">${esc(statusLabel(a))}</span></div><div class="request-actions">${actions}<button class="btn danger" data-cancel="${a.id}">Cancelar</button></div></article>`;
@@ -938,7 +960,7 @@ function bindRequests(){
 }
 async function sendFee(id){const a=getState().appointments.find(x=>x.id===id),p=getProfessional(a?.professionalId);if(!a)return;if(!p?.pixKey)return notify('Cadastre a chave PIX da profissional antes de enviar a cobrança.','PIX não cadastrado');try{await DDB.markWhatsapp(a.id,'deposit_charge');await syncAdminSnapshot();window.open(waLink(a.phone,buildMessage('fee',a)),'_blank');renderModule();}catch(e){notify(e.message||'Não foi possível registrar o envio do sinal.');}}
 async function markFeeReceived(id){const a=getState().appointments.find(x=>x.id===id);if(!a)return;requireSensitiveOperator('registrar sinal',async operatorId=>{try{await DDB.recordDeposit(a.id,a.bookingFeeAmount,'pix',operatorId);await syncAdminSnapshot();renderModule();notify('Sinal registrado. Agora revise a anamnese.');}catch(e){notify(e.message||'Não foi possível registrar o sinal.');}});}
-function reviewAnamnesis(id){const db=getState(),a=db.appointments.find(x=>x.id===id),an=db.anamneses.find(x=>x.id===a?.anamnesisId);if(!a||!an)return notify('Ficha de anamnese não encontrada.');const old=structuredClone(an);openModal(`Avaliação profissional — ${a.clientName}`,anamnesisEditForm(an),root=>{$('#saveAnam',root).onclick=async()=>{anamnesisFields.forEach(([k])=>{const el=$(`[name="${k}"]`,root);if(el)an[k]=el.value});an.heatUse=$$('[name="heatUse"]:checked',root).map(x=>x.value);an.problems=$$('[name="problems"]:checked',root).map(x=>x.value);const answers={hair_type:an.hairType,pattern:an.classification,natural_color:an.naturalColor,lightening_background:an.lighteningBackground,density:an.density,texture:an.texture,characteristic:an.characteristic,resistance:an.resistance,porosity:an.porosity,elasticity:an.elasticity,recent_chemistry:an.recentChemistry,chemistry_details:an.chemistryDetails,frequent_heat:an.heatUse,problems:an.problems,other_problems:an.otherProblems,professional_notes:an.professionalNotes};try{if(an.origin==='profile')await DDB.reviewHairProfile(a.id,answers);else await DDB.updateAnamnesis(an.id,answers,null);closeModal();await syncAdminSnapshot();renderModule();notify('Anamnese atualizada e revisão registrada.');}catch(e){notify(e.message||'Não foi possível atualizar a anamnese.');}};});}
+function reviewAnamnesis(id){const db=getState(),a=db.appointments.find(x=>x.id===id),an=db.anamneses.find(x=>x.id===a?.anamnesisId);if(!a||!an)return notify('A cliente ainda precisa completar a ficha capilar pelo portal Meus agendamentos. Não confirme este atendimento antes da revisão.','Ficha pendente');const old=structuredClone(an);openModal(`Avaliação profissional — ${a.clientName}`,anamnesisEditForm(an),root=>{$('#saveAnam',root).onclick=async()=>{anamnesisFields.forEach(([k])=>{const el=$(`[name="${k}"]`,root);if(el)an[k]=el.value});an.heatUse=$$('[name="heatUse"]:checked',root).map(x=>x.value);an.problems=$$('[name="problems"]:checked',root).map(x=>x.value);const answers={hair_type:an.hairType,pattern:an.classification,natural_color:an.naturalColor,lightening_background:an.lighteningBackground,density:an.density,texture:an.texture,characteristic:an.characteristic,resistance:an.resistance,porosity:an.porosity,elasticity:an.elasticity,recent_chemistry:an.recentChemistry,chemistry_details:an.chemistryDetails,frequent_heat:an.heatUse,problems:an.problems,other_problems:an.otherProblems,professional_notes:an.professionalNotes};try{if(an.origin==='profile')await DDB.reviewHairProfile(a.id,answers);else await DDB.updateAnamnesis(an.id,answers,null);closeModal();await syncAdminSnapshot();renderModule();notify('Anamnese atualizada e revisão registrada.');}catch(e){notify(e.message||'Não foi possível atualizar a anamnese.');}};});}
 function anamnesisEditForm(an){const val=k=>esc(an[k]||'');return `<div class="form-grid"><p class="muted">Revisão administrativa: a ficha original permanece preservada no histórico.</p><label>Tipo<input name="hairType" value="${val('hairType')}"></label><label>Classificação<input name="classification" value="${val('classification')}"></label><label>Cor natural<select name="naturalColor"><option></option>${['1 — Preto','2 — Castanho muito escuro','3 — Castanho escuro','4 — Castanho médio','5 — Castanho claro','6 — Loiro escuro','7 — Loiro médio','8 — Loiro claro','9 — Loiro muito claro','10 — Loiro claríssimo','Não identificado'].map(v=>`<option ${an.naturalColor===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Fundo/clareamento<select name="lighteningBackground"><option></option>${['Vermelho escuro','Vermelho','Vermelho-alaranjado','Alaranjado','Amarelo-alaranjado','Amarelo','Amarelo claro/pálido','Não se aplica / cabelo não clareado','Não identificado'].map(v=>`<option ${an.lighteningBackground===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Densidade<input name="density" value="${val('density')}"></label><label>Textura<input name="texture" value="${val('texture')}"></label><label>Característica<input name="characteristic" value="${val('characteristic')}"></label><label>Resistência<input name="resistance" value="${val('resistance')}"></label><label>Porosidade<input name="porosity" value="${val('porosity')}"></label><label>Elasticidade<input name="elasticity" value="${val('elasticity')}"></label><label>Química recente<input name="recentChemistry" value="${val('recentChemistry')}"></label><label>Detalhes da química<input name="chemistryDetails" value="${val('chemistryDetails')}"></label><fieldset><legend>Uso frequente</legend>${['Nenhum','Secador','Prancha','Modelador'].map(v=>`<label><input type="checkbox" name="heatUse" value="${v}" ${(an.heatUse||[]).includes(v)?'checked':''}> ${v}</label>`).join('')}</fieldset><fieldset><legend>Pontos informados/observados</legend>${['Nenhum','Queda','Seborreia/Caspa','Dermatite','Tricoptilose','Triconodose','Tricorrexis Nodosa','Tricotilomania','Pediculose'].map(v=>`<label><input type="checkbox" name="problems" value="${v}" ${(an.problems||[]).includes(v)?'checked':''}> ${v}</label>`).join('')}</fieldset><label>Outros pontos<textarea name="otherProblems">${val('otherProblems')}</textarea></label><label>Observação profissional<textarea name="professionalNotes">${val('professionalNotes')}</textarea></label></div><button class="btn gold" id="saveAnam">Salvar avaliação</button>`;}
 function nonRecommend(id){const db=getState(),a=db.appointments.find(x=>x.id===id),an=db.anamneses.find(x=>x.id===a?.anamnesisId);if(!a||!an)return notify('A ficha capilar deste agendamento não foi localizada. Atualize a página e tente novamente.');const choices=anamnesisFields.filter(([k])=>an[k]).map(([k,l])=>`<label class="toggle-option"><input type="checkbox" data-reason value="${esc(l+': '+an[k])}"><span>${esc(l)}: ${esc(an[k])}</span></label>`).join('');openModal('Notificar não recomendação',`<p>Selecione exatamente os dados que são pontos de atenção.</p><div class="reason-list">${choices}</div><button class="btn gold" id="sendNonRec">Gerar mensagem e enviar</button>`,root=>{$('#sendNonRec',root).onclick=async()=>{const reasons=$$('[data-reason]:checked',root).map(x=>x.value);if(!reasons.length)return notify('Selecione ao menos um ponto de atenção.');try{const content=getState().settings.specificConsentText||'A profissional identificou pontos que precisam da sua ciência antes de prosseguir com o atendimento.';const result=await DDB.createNonRecommendationConsent(a.id,reasons,content,'1.0');const data=Array.isArray(result)?result[0]:result,token=data?.token;if(!token)throw new Error('Não foi possível gerar o link de ciência.');const link=`${location.origin}${location.pathname}#special-consent?token=${encodeURIComponent(token)}`;await syncAdminSnapshot();window.open(waLink(a.phone,buildMessage('nonRecommended',a,{reasons,link})),'_blank','noopener');closeModal();renderModule();}catch(e){console.error(e);notify(e.message||'Não foi possível gerar a ciência.');}};});}
 function confirmRequest(id){
@@ -1317,7 +1339,7 @@ async function ensureClientAuth(){const s=await DDB.session();if(s)return s;cons
 let bookingSubmissionPending=false;
 async function submitRequest(){
  if(bookingSubmissionPending)return;
- if(booking.partialSubmissionId)return notify('Uma solicitação já foi criada com ficha incompleta. Não envie novamente; entre em contato com a D&D.','Atendimento pendente');
+ if(booking.partialSubmissionId)return notify('Esta solicitação já existe. Acesse Meus agendamentos e use Completar ficha capilar, sem criar outra solicitação.','Atendimento pendente');
  bookingSubmissionPending=true;
  $('#nextBtn').disabled=true;
  try{
@@ -1334,9 +1356,103 @@ async function submitRequest(){
   const id=await DDB.submitBooking({p_rc7_idempotency_key:idempotency,p_rc7_material_choices:booking.materialChoices||{},p_professional_id:booking.professionalId,p_service_id:service.id,p_method_id:isMaintenanceBooking(booking)?null:(booking.methodId||null),p_variation_id:isMaintenanceBooking(booking)?null:(booking.variationId||null),p_scheduled_start:when,p_client_name:booking.clientName,p_client_phone:booking.phone,p_client_email:booking.email,p_notes:booking.note||null,p_brings_own_material:booking.materialProvider==='client',p_option_ids:optionIds,p_accessory_ids:isMaintenanceBooking(booking)?[]:(booking.accessoryIds||[]),p_material_variant_id:isMaintenanceBooking(booking)?null:materialVariantId,p_reference_image_path:ref,p_consent_accepted:booking.consentAccepted===true,p_maintenance_of_service_id:p?.special==='maintenance'?(booking.maintenanceTargetId||null):null},booking.anamnesis,booking.anamnesisMode==='reuse');
   // O consentimento persistente será emitido/aceito pelo fluxo seguro do backend; não há INSERT direto em tabela protegida.
   openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); try{localStorage.removeItem(BOOKING_DRAFT_KEY);}catch{} booking=newBooking();stepIndex=0;
- }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação foi criada, mas a ficha capilar não foi salva. Não reenvie: entre em contato com a D&D para completar a ficha.':(e.message||'Não foi possível enviar a solicitação.'),'Erro no agendamento');}
+ }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação já existe. Abra Meus agendamentos e complete a ficha capilar, sem reenviar.':(e.message||'Não foi possível enviar a solicitação. Nenhum novo agendamento foi registrado.'),'Erro no agendamento');}
  finally{bookingSubmissionPending=false;$('#nextBtn').disabled=false;}
 }
+// Completes ONLY an existing incomplete appointment; never creates a new booking
+// or touches an already recorded deposit.
+function openMissingHairProfile(appointmentId){
+  const answers=emptyAnamnesis();
+  // Reuse the existing accessible field markup without changing the current booking.
+  const previous=booking;
+  let form;
+  try{booking={...newBooking(),anamnesis:answers};form=renderAnamnesisStep();}
+  finally{booking=previous;}
+  openModal('Completar ficha capilar',
+    `<p class="muted">A solicitação já foi registrada. Preencha apenas a ficha capilar pendente; nenhum novo horário ou pagamento será criado.</p>${form}<div class="modal-actions"><button type="button" class="btn" id="dismissMissingHair">Voltar</button><button type="button" class="btn gold" id="saveMissingHair">Salvar ficha capilar</button></div>`,
+    root=>{
+      const capture=e=>{
+        const t=e.target;
+        if(t.dataset.an!==undefined){answers[t.dataset.an]=t.value;if(t.dataset.an==='classification')answers.hairType=hairTypeForPattern(t.value);}
+        if(t.matches('[data-an-heat]')) answers.heatUse=$$('[data-an-heat]:checked',root).map(x=>x.value);
+        if(t.matches('[data-an-problem]')) answers.problems=$$('[data-an-problem]:checked',root).map(x=>x.value);
+      };
+      root.addEventListener('input',capture);
+      root.addEventListener('change',capture);
+      $('#dismissMissingHair',root).onclick=closeModal;
+      $('#saveMissingHair',root).onclick=async()=>{
+        const required=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry'];
+        if(required.some(k=>!String(answers[k]||'').trim())||!answers.heatUse.length||!answers.problems.length)
+          return notify('Preencha todos os campos obrigatórios.','Ficha incompleta');
+        if(!HAIR_PATTERNS.includes(String(answers.classification||'').trim().toUpperCase())||answers.hairType!==hairTypeForPattern(answers.classification))
+          return notify('Selecione uma classificação válida (1A a 4C).','Classificação inválida');
+        const button=$('#saveMissingHair',root);button.disabled=true;
+        try{
+          await DDB.completeMissingHairProfile(appointmentId,answers);
+          closeModal();
+          notify('Ficha capilar vinculada ao atendimento existente. Nenhuma nova cobrança foi criada.','Ficha concluída');
+          await renderAccount();
+        }catch(e){console.error(e);notify(e.message||'Não foi possível completar a ficha.','Erro ao salvar');}
+        finally{button.disabled=false;}
+      };
+    }
+  );
+}
+
+// The reset link authenticates a *recovery session*. Never process a normal login
+// as if it granted permission to change a forgotten password.
+function passwordQuality(password){
+  if(password.length<8)return 'Use pelo menos 8 caracteres para a nova senha.';
+  if(password.length>72)return 'Use no máximo 72 caracteres para a senha.';
+  return '';
+}
+function passwordFields(current=false){
+  const prefix=current?'change':'reset';
+  return `<div class="auth-form password-form">${current?`<label>Senha atual<input id="changeCurrentPassword" type="password" autocomplete="current-password" required></label>`:''}<label>Nova senha<input id="${prefix}NewPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label><label>Confirmar nova senha<input id="${prefix}ConfirmPassword" type="password" minlength="8" maxlength="72" autocomplete="new-password" required></label><label class="password-show"><input type="checkbox" id="${prefix}ShowPasswordFields"> Mostrar senhas</label><p class="muted">Use pelo menos 8 caracteres. Não compartilhe sua senha com ninguém.</p><p id="${prefix}PasswordFeedback" class="auth-signup-feedback" role="status" aria-live="polite" hidden></p></div>`;
+}
+function initPasswordFields(root,hasCurrent){
+  const prefix=hasCurrent?'change':'reset';
+  const fields=[prefix+'NewPassword',prefix+'ConfirmPassword',...(hasCurrent?['changeCurrentPassword']:[])].map(k=>$('#'+k,root));
+  $('#'+prefix+'ShowPasswordFields',root).onchange=e=>{fields.forEach(input=>input.type=e.target.checked?'text':'password');};
+  return {newPass:()=>fields[0].value,confirm:()=>fields[1].value,current:()=>hasCurrent?$('#changeCurrentPassword',root).value:''};
+}
+function passwordStatus(root,message){ const status=$(root.id==='resetPasswordPanel'?'#resetPasswordFeedback':'#changePasswordFeedback',root);status.hidden=false;status.textContent=message; }
+async function renderResetPassword(){
+  const root=$('#resetPasswordPanel');if(!root)return;
+  if(!passwordRecoveryActive){
+    root.innerHTML='<h2>Link de recuperação necessário</h2><p class="muted">Para sua segurança, solicite o link pelo botão “Esqueci a senha” na tela de login. Se o link expirou, solicite um novo.</p><button class="btn gold" id="resetLoginAction">Ir para minha conta</button>';
+    $('#resetLoginAction',root).onclick=()=>{location.hash='#account';};return;
+  }
+  const session=await DDB.session();
+  if(!session?.user){root.innerHTML='<h2>Link inválido ou expirado</h2><p>Solicite um novo e-mail de recuperação pelo login.</p><a class="btn gold" href="#account">Ir para o login</a>';return;}
+  root.innerHTML='<h2>Crie sua nova senha</h2><p class="muted">Digite sua nova senha para recuperar o acesso à D&D Braids Beauty.</p>'+passwordFields()+'<button class="btn gold" type="button" id="submitResetPassword">Salvar nova senha</button>';
+  const state=initPasswordFields(root,false);
+  $('#submitResetPassword',root).onclick=async()=>{
+    const pwd=state.newPass(),msg=passwordQuality(pwd);if(msg)return passwordStatus(root,msg);
+    if(pwd!==state.confirm())return passwordStatus(root,'As senhas não coincidem.');
+    const button=$('#submitResetPassword',root);button.disabled=true;
+    try{await DDB.updatePassword(pwd);passwordRecoveryActive=false;history.replaceState(null,'',appBaseUrl()+'#account');notify('Sua senha foi redefinida com sucesso.','Senha atualizada');renderPublicRoute();}
+    catch(e){passwordStatus(root,e.message||'Não foi possível redefinir a senha. Tente solicitar um novo link.');}
+    finally{button.disabled=false;}
+  };
+}
+function openChangePassword(){
+  openModal('Segurança da conta',`<p class="muted">Para alterar a senha, confirme sua senha atual e escolha uma nova.</p>${passwordFields(true)}<div class="modal-actions"><button class="btn" id="cancelChangePassword">Voltar</button><button class="btn gold" id="saveChangePassword">Alterar senha</button></div>`,root=>{
+    const state=initPasswordFields(root,true);$('#cancelChangePassword',root).onclick=closeModal;
+    $('#saveChangePassword',root).onclick=async()=>{
+      const oldPass=state.current(),pwd=state.newPass(),msg=passwordQuality(pwd);
+      if(!oldPass)return passwordStatus(root,'Informe a senha atual.');
+      if(msg)return passwordStatus(root,msg);
+      if(pwd!==state.confirm())return passwordStatus(root,'As senhas não coincidem.');
+      if(pwd===oldPass)return passwordStatus(root,'Escolha uma senha diferente da atual.');
+      const button=$('#saveChangePassword',root);button.disabled=true;
+      try{accountPasswordChangeInProgress=true;await DDB.changePasswordWithCurrent(oldPass,pwd);closeModal();notify('Sua senha foi alterada com sucesso.','Segurança');}
+      catch(e){passwordStatus(root,e.message||'Não foi possível alterar a senha. Confira a senha atual.');}
+      finally{accountPasswordChangeInProgress=false;button.disabled=false;}
+    };
+  });
+}
+
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
  // Clear account-only controls before checking the current session.
@@ -1346,7 +1462,9 @@ async function renderAccount(){
  if(s && controls){
    const email=document.createElement('span');email.className='account-signed-in';email.textContent=s.user?.email||'Conta conectada';
    const out=document.createElement('button');out.type='button';out.id='logoutClient';out.className='btn';out.textContent='Sair da conta';
-   controls.append(email,out);
+   const security=document.createElement('button');security.type='button';security.id='changeClientPassword';security.className='btn';security.textContent='Alterar senha';
+   controls.append(email,security,out);
+   security.onclick=()=>openChangePassword();
    out.onclick=async()=>{
      if(out.disabled)return;out.disabled=true;
      try{
@@ -1361,7 +1479,7 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${a.deposit_status==='paid'?'Sinal pago ✓':'Sinal pendente'} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=async()=>{try{await DDB.clientCancel(b.dataset.id);renderAccount();notify('Cancelamento registrado.');}catch(e){notify(e.message);}});$$('.account-reschedule').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.requestWaitlist(b.dataset.id);notify('Solicitação registrada na lista de espera.');renderAccount();}catch(e){notify(e.message||'Não foi possível solicitar a remarcação.');}finally{b.disabled=false;}});
+ try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${a.deposit_status==='paid'?'Sinal pago ✓':'Sinal pendente'} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=async()=>{try{await DDB.clientCancel(b.dataset.id);renderAccount();notify('Cancelamento registrado.');}catch(e){notify(e.message);}});$$('.account-complete-hair').forEach(b=>b.onclick=()=>openMissingHairProfile(b.dataset.id));$$('.account-reschedule').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.requestWaitlist(b.dataset.id);notify('Solicitação registrada na lista de espera.');renderAccount();}catch(e){notify(e.message||'Não foi possível solicitar a remarcação.');}finally{b.disabled=false;}});
   await window.DDBraidsRC7?.renderAccount(box,list);}catch(e){box.innerHTML=`<div class="empty-state">Não foi possível carregar seus agendamentos.</div>`;}
 }
 async function renderSpecificConsent(){
