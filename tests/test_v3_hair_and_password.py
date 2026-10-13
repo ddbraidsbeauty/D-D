@@ -13,7 +13,10 @@ async def main():
    await page.evaluate('''() => {
      window.__fake.passwordChanges=[];
      window.DDB.sb.auth.getUser=async()=>({data:{user:{id:'user1',email:'teste@example.com'}},error:null});
-     window.DDB.sb.auth.updateUser=async({password,currentPassword})=>{if(currentPassword!==undefined&&currentPassword!=='oldpass123')return {error:{message:'Invalid current password'}};window.__fake.passwordChanges.push(password);window.__fake.lastCurrentPassword=currentPassword;return {data:{user:{}},error:null}};
+     window.__fake.passwordChecks=[];
+     window.DDB.sb.auth.signInWithPassword=async({email,password})=>{window.__fake.passwordChecks.push({email,matched:password==='oldpass123'});return password==='oldpass123'?{data:{user:{id:'user1',email}},error:null}:{data:{user:null},error:{message:'Invalid login credentials'}}};
+     // Reproduce the actual vulnerability: updateUser ignores currentPassword.
+     window.DDB.sb.auth.updateUser=async({password,currentPassword})=>{window.__fake.passwordChanges.push(password);window.__fake.lastCurrentPassword=currentPassword;return {data:{user:{}},error:null}};
      window.DDB.sb.auth.resetPasswordForEmail=async(email,options)=>{window.__fake.resetRequest={email,options};return {error:null}};
    }''')
    # Password request uses exact site root so existing redirect allow-list works.
@@ -32,10 +35,14 @@ async def main():
    await page.wait_for_timeout(80)
    assert 'Senha atual incorreta' in await page.locator('#changePasswordFeedback').inner_text()
    assert await page.evaluate('window.__fake.passwordChanges')==[]
+   assert await page.evaluate('window.__fake.passwordChecks.length')==1
+   assert (await page.evaluate('window.__fake.passwordChecks[0]'))['matched'] is False
    await page.locator('#changeCurrentPassword').fill('oldpass123')
    await page.locator('#saveChangePassword').click()
    await page.wait_for_timeout(120)
    assert await page.evaluate('window.__fake.passwordChanges')==['newSecure123']
+   assert await page.evaluate('window.__fake.passwordChecks.length')==2
+   assert (await page.evaluate('window.__fake.passwordChecks[1]'))['matched'] is True
    assert await page.evaluate('window.__fake.lastCurrentPassword')=='oldpass123'
    assert not await page.locator('#modal').evaluate('(el)=>el.classList.contains("open")')
    assert not errors,(width,errors)
