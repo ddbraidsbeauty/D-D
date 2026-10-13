@@ -1,6 +1,6 @@
 # D&D Braids Beauty — v3.0.0 (prévia para revisão/homologação)
 
-**Status:** pacote gerado e testado localmente com Supabase simulado. **Código em revisão na branch de desenvolvimento; a migração das duas RPCs já foi aplicada ao Supabase com autorização.** O site publicado continua como estava.
+**Status:** pacote gerado e testado localmente com Supabase simulado. **Código em revisão na branch de desenvolvimento; as duas migrações de backend da v3.0.0 já foram aplicadas ao Supabase com autorização, incluindo o suporte a material fornecido pela cliente.** O site publicado continua como estava.
 
 ## O que mudou
 
@@ -16,13 +16,13 @@
 2. Supabase Dashboard → Authentication → Emails → Templates → **Reset Password**. Colar o assunto e o HTML dos arquivos `email_templates/` (sem alterar o template **Confirm sign up** já aprovado). Salvar. O e-mail sai pelo SMTP do Resend já configurado. Mantenha `{{ .ConfirmationURL }}` inalterado.
 3. Em **Authentication → Emails → Templates / Security notifications**, configure também o template **Password changed** (`email_templates/password_changed.html`) e seu assunto; **habilite o envio dessa notificação de segurança** no projeto. Ela não é enviada se estiver desativada. O template não precisa de `{{ .ConfirmationURL }}`.
 4. Verificar Authentication → URL Configuration: `Site URL: https://ddbraids.com.br/` e Redirect URLs permitindo `https://ddbraids.com.br/` (caminho usado pelo link de recuperação). Não trocar as URLs confirmadas sem necessidade.
-5. **Somente depois da migração instalada**, publicar os arquivos no repositório existente via GitHub Desktop (commit + push). Manter a pasta `.git` e o workflow **`.github/workflows/static.yml`** já funcionando no GitHub, caso não exista no ZIP; manter `CNAME` como `ddbraids.com.br`.
+5. **Código já enviado à branch `feature/dd-braids-v3-0-0`** e em revisão no PR #1. Antes de publicar, aprovar os testes e o merge para `main`. Preservar `.github/workflows/static.yml` e `CNAME` (`ddbraids.com.br`).
 6. Verificar GitHub Actions (verde), abrir site HTTPS com refresh sem cache e testar: recuperar senha no mesmo e em outro dispositivo; digitar senha nova; login; alterar senha com senha atual correta/incorreta; cadastro + e-mail de confirmação + retomada do agendamento; anamnese em celular, tablet e desktop; completar a ficha pendente de um atendimento já pago sem recriar agendamento ou cobrança.
 
 ## Limitações / observações
 
 - **Testes locais não equivalem a testes reais com Supabase Auth/Resend.** O template deve ser verificado em Gmail e iPhone; aplicativos podem forçar cores próprias no dark mode.
-- A mudança de senha com senha atual valida a senha a senha antiga no próprio `auth.updateUser({ password, current_password })` (método suportado no supabase-js v2.102+). Não faz segundo login nem guarda a senha em armazenamento. A versão `@supabase/supabase-js@2` é carregada via CDN e deve estar em versão compatível; é necessário confirmar o funcionamento no site publicado.
+- A mudança de senha com senha atual valida a senha antiga no próprio `auth.updateUser({ password, currentPassword })` (método suportado no supabase-js v2.102+). Não faz segundo login nem guarda a senha em armazenamento. A versão `@supabase/supabase-js@2` é carregada via CDN e deve estar em versão compatível; é necessário confirmar o funcionamento no site publicado.
 - O cadastro e recuperação do rascunho já funcionaram em produção antes desta mudança; é importante confirmar que continuam sem regressão depois do deploy.
 - A opção "Não sei identificar" foi **adiada**: o banco atualmente exige um dos 12 códigos. A cliente pode escolher o padrão mais próximo e a profissional revisará a classificação. Não envia valor inválido silenciosamente.
 - A foto de referência/anamnese não é armazenada no rascunho do navegador.
@@ -33,6 +33,8 @@
 
 `index.html`, `app.js`, `backend.js`, `logic.js`, `rc7-ui.js`, `styles.css`, pasta `assets/`, arquivo `CNAME` na raiz. Os fontes em `src/`, `styles/` e testes são para manutenção. O workflow GitHub Actions existente continua válido.
 
-**Pendente antes do merge:** revisar/aplicar `migrations_pending_review/20261013_restore_client_supplied_materials.sql` para manter a opção de material fornecido pela cliente. Esta correção NÃO foi aplicada ao banco.
+**Migração de material próprio: APLICADA com autorização e verificada em 13/10.** O arquivo `migrations_pending_review/20261013_restore_client_supplied_materials.sql` é apenas uma cópia histórica ainda não reclassificada; **NÃO executar novamente**.
+
+**Templates e URL Configuration:** usuário confirmou que salvou Reset Password, Password changed e alterou o Site URL para `https://ddbraids.com.br/`. Verificação funcional real dos e-mails ainda pendente.
 
 **Obrigatório antes da homologação da troca de senha:** conferir nas configurações de segurança do Supabase Auth se a exigência de senha atual está habilitada. O supabase-js v2.102+ usa `auth.updateUser({password, currentPassword})` (camelCase); testar também a senha antiga incorreta no Supabase real.
