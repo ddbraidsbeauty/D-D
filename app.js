@@ -351,9 +351,10 @@ function dateBlocked(proId,date, fullDay=false, ignoreId=null, options={}){
   if(fullDay) return same.some(a=>isConfirmed(a));
   return same.some(a=>isConfirmed(a) && a.fullDay);
 }
-function clientCurrentAnamnesis(phone){
-  const k=String(phone||'').replace(/\D/g,'');
-  return getState().anamneses.filter(a=>String(a.phone||'').replace(/\D/g,'')===k).sort((a,b)=>b.createdAt-a.createdAt)[0]||null;
+function clientCurrentAnamnesis(){
+  // Only a verified Supabase profile for the authenticated account can be reused.
+  // Telephone matching and the administrator's local snapshot are not trusted here.
+  return currentClientHairProfileOwnerId ? currentClientHairProfile : null;
 }
 
 function emptyAnamnesis(){ return {hairType:'',classification:'',naturalColor:'',lighteningBackground:'',density:'',texture:'',characteristic:'',resistance:'',porosity:'',elasticity:'',recentChemistry:'',chemistryDetails:'',heatUse:[],problems:[],otherProblems:'',professionalNotes:''}; }
@@ -367,6 +368,10 @@ const anamnesisFields = [
 let catalogCategory = 'Todos';
 let booking = newBooking();
 let stepIndex = 0;
+// Loaded from Supabase for the authenticated client before the anamnesis step.
+// Never reuse demo data, phone-matched records or another client's profile.
+let currentClientHairProfile = null;
+let currentClientHairProfileOwnerId = null;
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
 const HAIR_PATTERNS=['1A','1B','1C','2A','2B','2C','3A','3B','3C','4A','4B','4C'];
 const HAIR_DESCRIPTIONS={ '1A':'Liso reto','1B':'Liso com leve corpo','1C':'Liso encorpado','2A':'Ondulado suave','2B':'Ondulado definido','2C':'Ondulado forte','3A':'Cacheado solto','3B':'Cacheado definido','3C':'Cacheado fechado','4A':'Crespo em espiral','4B':'Crespo em Z','4C':'Crespo denso' };
@@ -489,6 +494,13 @@ function initPublic(){
   // Run even when the SDK has already cleaned the confirmation hash.
   finishAuthCallback();
   DDB.sb.auth.onAuthStateChange((event,session)=>{
+    if(event==='SIGNED_OUT'||(
+      (event==='SIGNED_IN'||event==='INITIAL_SESSION') &&
+      session?.user?.id!==currentClientHairProfileOwnerId
+    )){
+      currentClientHairProfile=null;
+      currentClientHairProfileOwnerId=null;
+    }
     if(event==='PASSWORD_RECOVERY'){
       passwordRecoveryActive=true;
       setTimeout(()=>{ history.replaceState(null,'',appBaseUrl()+'#reset-password');renderPublicRoute(); },0);
@@ -671,7 +683,7 @@ function summaryCard(){
 }
 
 function renderAnamnesisStep(){
-  const old=clientCurrentAnamnesis(booking.phone);
+  const old=clientCurrentAnamnesis();
   if(old && booking.hairChange===null) return `<div class="glass nested"><h2>Já encontramos uma ficha anterior.</h2><p>Houve alguma alteração capilar recente ou você realizou algum procedimento químico desde sua última avaliação?</p><div class="actions"><button type="button" class="btn" data-hair-change="no">Não</button><button type="button" class="btn gold" data-hair-change="yes">Sim</button></div></div>`;
   if(old && booking.hairChange==='no'){ booking.anamnesisMode='reuse'; return `<div class="anamnesis-summary"><h2>Ficha atual será reutilizada</h2><p class="muted">A profissional ainda poderá revisar e atualizar observações.</p>${anamSummary(old)}</div>`; }
   booking.anamnesisMode='new'; const x=booking.anamnesis;
@@ -735,7 +747,7 @@ function validateStep(id){
   if(id==='date'&&!isMaintenanceBooking(booking)&&!booking.time) return 'Escolha um horário disponível.';
   if(id==='client'&&(!booking.clientName.trim()||phoneKey(booking.phone).length<8)) return 'Preencha nome e WhatsApp corretamente.';
   if(id==='anamnesis'){
-    const old=clientCurrentAnamnesis(booking.phone); if(old&&booking.hairChange===null) return 'Informe se houve alteração capilar desde a última avaliação.';
+    const old=clientCurrentAnamnesis(); if(old&&booking.hairChange===null) return 'Informe se houve alteração capilar desde a última avaliação.';
     if(booking.anamnesisMode==='new'||!old){ const x=booking.anamnesis; const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry']; if(keys.some(k=>!String(x[k]||'').trim())||!x.heatUse.length||!x.problems.length) return 'Preencha todos os campos obrigatórios da anamnese.'; if(!HAIR_PATTERNS.includes(String(x.classification||'').trim().toUpperCase())||x.hairType!==hairTypeForPattern(x.classification))return 'Escolha uma classificação capilar nas imagens.'; }
   }
   if(id==='consent'&&!booking.consentAccepted) return 'Você precisa ler e aceitar o consentimento para continuar.';
@@ -750,6 +762,23 @@ async function nextBookingStep(){
       if(!session)return;
       if(!booking.email)booking.email=session.user.email||'';
     }catch(e){return notify(e.message||'Não foi possível entrar na conta.','Login');}
+  }
+  if(id==='client'){
+    try{
+      const session=await ensureClientAuth();
+      if(!session?.user?.id)return;
+      // An unsuccessful lookup must not silently be interpreted as a new client.
+      const profile=await DDB.myLatestHairProfile();
+      if(currentClientHairProfileOwnerId!==session.user.id){
+        booking.hairChange=null;
+        booking.anamnesisMode='';
+      }
+      currentClientHairProfile=profile;
+      currentClientHairProfileOwnerId=session.user.id;
+    }catch(e){
+      console.error('Não foi possível consultar a anamnese anterior:',e);
+      return notify('Não foi possível consultar sua ficha capilar. Tente novamente antes de continuar.','Anamnese');
+    }
   }
   stepIndex++; renderBooking();
 }
