@@ -84,6 +84,36 @@
     },
     async reuseHairProfile(appointmentId){ return rpc('reuse_latest_hair_profile',{p_appointment_id:appointmentId}); },
     async acceptConsent(consentId){ return rpc('accept_consent',{p_consent_id:consentId}); },
+    async myLatestHairProfile(expectedClientId=null){
+      // The query is scoped by BOTH the verified Auth user ID and the
+      // client_hair_profiles SELECT RLS policy; never identify clients by phone.
+      const {data:identity,error:identityError}=await sb.auth.getUser();
+      const userId=identity?.user?.id;
+      if(identityError||!userId)throw new Error('Sua sessão expirou. Entre novamente para consultar sua ficha.');
+      if(expectedClientId&&userId!==expectedClientId)throw new Error('A conta ativa mudou. Entre novamente antes de continuar.');
+      const {data,error}=await sb.from('client_hair_profiles')
+        .select('id,client_id,version,answers,superseded_at')
+        .eq('client_id',userId)
+        .is('superseded_at',null)
+        .order('version',{ascending:false})
+        .limit(1)
+        .maybeSingle();
+      if(error)throw error;
+      if(!data)return null;
+      const a=data.answers||{};
+      return {
+        id:data.id,clientId:data.client_id,
+        hairType:a.hair_type??a.hairType??'',
+        classification:a.pattern??a.classification??'',
+        naturalColor:a.natural_color??a.naturalColor??'',
+        lighteningBackground:a.lightening_background??a.lighteningBackground??'',
+        density:a.density??'',texture:a.texture??'',
+        characteristic:a.characteristic??'',
+        resistance:a.resistance??'',porosity:a.porosity??'',
+        elasticity:a.elasticity??'',
+        recentChemistry:a.recent_chemistry??a.recentChemistry??''
+      };
+    },
     async myAppointments(){ const {data,error}=await sb.from('appointments').select('*').order('created_at',{ascending:false}); if(error) throw error; return data||[]; },
     async clientCancel(id,reason='Cancelado pela cliente'){ return rpc('client_cancel_appointment',{p_appointment_id:id,p_reason:reason}); },
     async operators(){ return table('internal_operators','id,display_name,slug,is_professional,is_active,pin_updated_at'); },

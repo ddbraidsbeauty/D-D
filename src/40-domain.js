@@ -100,9 +100,10 @@ function dateBlocked(proId,date, fullDay=false, ignoreId=null, options={}){
   if(fullDay) return same.some(a=>isConfirmed(a));
   return same.some(a=>isConfirmed(a) && a.fullDay);
 }
-function clientCurrentAnamnesis(phone){
-  const k=String(phone||'').replace(/\D/g,'');
-  return getState().anamneses.filter(a=>String(a.phone||'').replace(/\D/g,'')===k).sort((a,b)=>b.createdAt-a.createdAt)[0]||null;
+function clientCurrentAnamnesis(){
+  // Only a verified Supabase profile for the authenticated account can be reused.
+  // Telephone matching and the administrator's local snapshot are not trusted here.
+  return currentClientHairProfileOwnerId ? currentClientHairProfile : null;
 }
 
 function emptyAnamnesis(){ return {hairType:'',classification:'',naturalColor:'',lighteningBackground:'',density:'',texture:'',characteristic:'',resistance:'',porosity:'',elasticity:'',recentChemistry:'',chemistryDetails:'',heatUse:[],problems:[],otherProblems:'',professionalNotes:''}; }
