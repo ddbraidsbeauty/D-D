@@ -19,7 +19,7 @@
       if(sessionError||!before?.user?.id)throw new Error('Sua sessão expirou. Entre novamente para alterar a senha.');
       // Supabase Auth (supabase-js v2.102+) validates the existing password
       // server-side, with no extra login and no password kept in browser storage.
-      const {error}=await sb.auth.updateUser({password:newPassword,current_password:currentPassword});
+      const {error}=await sb.auth.updateUser({password:newPassword,currentPassword});
       if(error){
         if(/current.password|senha atual|invalid password/i.test(String(error.message||'')))
           throw new Error('Senha atual incorreta. Verifique e tente novamente.');

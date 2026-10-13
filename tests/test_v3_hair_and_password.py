@@ -13,7 +13,7 @@ async def main():
    await page.evaluate('''() => {
      window.__fake.passwordChanges=[];
      window.DDB.sb.auth.getUser=async()=>({data:{user:{id:'user1',email:'teste@example.com'}},error:null});
-     window.DDB.sb.auth.updateUser=async({password,current_password})=>{if(current_password!==undefined&&current_password!=='oldpass123')return {error:{message:'Invalid current password'}};window.__fake.passwordChanges.push(password);return {data:{user:{}},error:null}};
+     window.DDB.sb.auth.updateUser=async({password,currentPassword})=>{if(currentPassword!==undefined&&currentPassword!=='oldpass123')return {error:{message:'Invalid current password'}};window.__fake.passwordChanges.push(password);window.__fake.lastCurrentPassword=currentPassword;return {data:{user:{}},error:null}};
      window.DDB.sb.auth.resetPasswordForEmail=async(email,options)=>{window.__fake.resetRequest={email,options};return {error:null}};
    }''')
    # Password request uses exact site root so existing redirect allow-list works.
@@ -36,6 +36,7 @@ async def main():
    await page.locator('#saveChangePassword').click()
    await page.wait_for_timeout(120)
    assert await page.evaluate('window.__fake.passwordChanges')==['newSecure123']
+   assert await page.evaluate('window.__fake.lastCurrentPassword')=='oldpass123'
    assert not await page.locator('#modal').evaluate('(el)=>el.classList.contains("open")')
    assert not errors,(width,errors)
    print('PASS change password old/confirm/new',width)
