@@ -4,53 +4,100 @@ let booking = newBooking();
 let stepIndex = 0;
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
 const BOOKING_DRAFT_TTL=24*60*60*1000;
-const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialProvider','professionalId','date','period','time'];
+const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialId','color','materialProvider','professionalId','date','period','time'];
+let publicCatalogReady=false;
+let authRecoveryStarted=false;
+let authRecoveryCompleted=false;
 function cleanBookingDraft(input={}) {
   const draft={};
   for(const key of BOOKING_DRAFT_FIELDS){
     const val=input?.[key];
-    if((key==='tags'||key==='accessoryIds')&&Array.isArray(val)) draft[key]=val.filter(x=>typeof x==='string');
+    if((key==='tags'||key==='accessoryIds')&&Array.isArray(val)) draft[key]=val.filter(x=>typeof x==='string'&&x.length<=120).slice(0,40);
     else if(key==='materialChoices'&&val&&typeof val==='object'&&!Array.isArray(val))
-      draft[key]=Object.fromEntries(Object.entries(val).filter(([k,v])=>typeof k==='string'&&typeof v==='string'));
-    else if(typeof val==='string') draft[key]=val;
+      draft[key]=Object.fromEntries(Object.entries(val).filter(([k,v])=>typeof k==='string'&&k.length<=120&&typeof v==='string'&&v.length<=120).slice(0,40));
+    else if(typeof val==='string'&&val.length<=240) draft[key]=val;
   }
   return draft;
 }
 function appBaseUrl(){ return new URL('./', location.href.split('#')[0].split('?')[0]).href; }
-// Supabase owns the URL fragment during e-mail confirmation. Do not append our router hash here.
+// The site owns #booking; the Supabase callback owns its own fragment.
 function authReturnUrl(){ return appBaseUrl(); }
-function savePendingBookingDraft(){
-  // Email confirmation may reopen in another tab. Keep only nonsensitive selections.
-  // Never store anamnese, photos, Pix, internal records or medical details here.
-  try{
-    // Lista fechada: novos campos privados nunca passam a ser armazenados por acidente.
-    const safe=cleanBookingDraft(booking);
-    localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify({booking:safe,stepIndex,createdAt:Date.now()}));
-  }catch{}
+function currentBookingDraft(){
+  return {version:3,booking:cleanBookingDraft(booking),stepId:steps()[stepIndex]?.id||'client',stepIndex,createdAt:Date.now()};
 }
-function restorePendingBookingDraft(){ try{const raw=localStorage.getItem(BOOKING_DRAFT_KEY);if(!raw)return false;const d=JSON.parse(raw);if(!d?.booking||!d.createdAt||Date.now()-Number(d.createdAt)>BOOKING_DRAFT_TTL){localStorage.removeItem(BOOKING_DRAFT_KEY);return false;}booking={...newBooking(),...cleanBookingDraft(d.booking)};stepIndex=Math.max(0,Math.min(steps().length-1,Number(d.stepIndex)||0));localStorage.removeItem(BOOKING_DRAFT_KEY);return true;}catch{return false;} }
-function hasAuthCallback(){ const h=location.hash; return h.includes('access_token=')||h.includes('refresh_token=')||h.includes('error_code=')||h.includes('error_description='); }
-let authRecoveryStarted=false;
+function savePendingBookingDraft(){
+  // Share only NON-sensitive selections via auth user_metadata so an e-mail opened
+  // in another browser can still recover the draft. Never include name, telephone,
+  // e-mail, anamnesis, references, consent, financial details or medical notes.
+  const draft=currentBookingDraft();
+  try {localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify(draft));} catch {}
+  return draft;
+}
+function readPendingBookingDraft(session){
+  let local=null;
+  try{const raw=localStorage.getItem(BOOKING_DRAFT_KEY);if(raw)local=JSON.parse(raw);}catch{}
+  const remote=session?.user?.user_metadata?.ddb_booking_draft;
+  for(const d of [remote,local]){
+    if(!d||typeof d!=='object'||!d.booking||typeof d.booking!=='object')continue;
+    const age=Date.now()-Number(d.createdAt);
+    if(!Number.isFinite(age)||age<0||age>BOOKING_DRAFT_TTL)continue;
+    const safe=cleanBookingDraft(d.booking);
+    if(!safe.procedureId)continue;
+    return {...d,booking:safe};
+  }
+  return null;
+}
+function restorePendingBookingDraft(session){
+  // NEVER restore against the empty boot state. The old code clamped the saved
+  // stepIndex using steps() before the live catalog arrived, and lost the draft.
+  if(!publicCatalogReady)return false;
+  const d=readPendingBookingDraft(session);
+  if(!d)return false;
+  if(!getProcedure(d.booking.procedureId)){
+    notify('Seu procedimento ainda não está disponível no catálogo. O rascunho foi preservado.','Retomada pendente');
+    return false;
+  }
+  booking={...newBooking(),...d.booking,clientName:String(session?.user?.user_metadata?.full_name||''),email:String(session?.user?.email||'')};
+  const flow=steps();
+  const savedId=String(d.stepId||'');
+  const targetIndex=flow.findIndex(x=>x.id===savedId);
+  const clientIndex=flow.findIndex(x=>x.id==='client');
+  const previousIndex=targetIndex>=0?targetIndex:(Number.isFinite(Number(d.stepIndex))?Math.floor(Number(d.stepIndex)):0);
+  // Personal information, hair anamnesis, references and consent were deliberately
+  // NOT persisted; resume from client details so they can be entered safely again.
+  stepIndex=Math.max(0,Math.min(previousIndex,clientIndex>=0?clientIndex:flow.length-1));
+  // Keep a non-sensitive local draft until the request is actually submitted.
+  // A page refresh during the client/anamnesis steps must not reset the booking.
+  try{localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify({...d,booking:cleanBookingDraft(booking),stepId:'client'}));}catch{}
+  // The non-sensitive metadata draft can be cleared after the page has recovered it.
+  // If the cleanup fails, the UI is still usable and an already-restored draft isn't lost.
+  if(session?.user?.user_metadata?.ddb_booking_draft){
+    Promise.resolve().then(()=>DDB.sb.auth.updateUser({data:{ddb_booking_draft:null}})).catch(e=>console.warn('Draft cleanup deferred',e));
+  }
+  return true;
+}
+function hasAuthCallback(){
+  const h=location.hash;
+  return h.includes('access_token=')||h.includes('refresh_token=')||h.includes('error_code=')||h.includes('error_description=')||new URLSearchParams(location.search).has('code');
+}
 async function finishAuthCallback(){
-  if(authRecoveryStarted)return;
+  // Wait for the real catalog before evaluating stage indices, and never discard
+  // a draft if auth isn't ready yet. onAuthStateChange can retry later.
+  if(authRecoveryStarted||authRecoveryCompleted||!publicCatalogReady)return;
   authRecoveryStarted=true;
   const callback=hasAuthCallback();
   try{
-    // Supabase may consume and remove the token fragment before app.js initializes.
-    // Recover a pending signup by checking the authenticated session, not only the hash.
     const session=await DDB.session();
-    if(!session?.user){
-      if(callback && hasAuthCallback()) console.warn('D&D: authentication callback has no session yet');
-      return;
-    }
-    if(restorePendingBookingDraft()){
+    if(!session?.user)return;
+    if(restorePendingBookingDraft(session)){
+      authRecoveryCompleted=true;
       history.replaceState(null,'',appBaseUrl()+'#booking');
       renderPublicRoute();
+      notify('As escolhas do seu atendimento foram recuperadas. Confira os dados e continue o agendamento.','Agendamento recuperado');
       return;
     }
-    // Only normalize a callback if it is still in the address bar.
     if(callback && hasAuthCallback()){
-      history.replaceState(null,'',appBaseUrl()+'#booking');
+      history.replaceState(null,'',appBaseUrl()+'#account');
       renderPublicRoute();
     }
   }catch(e){console.error('Auth recovery failed',e);}
@@ -65,7 +112,7 @@ function initPublic(){
   // Run even when the SDK has already cleaned the confirmation hash.
   finishAuthCallback();
   DDB.sb.auth.onAuthStateChange((event,session)=>{
-    if((event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user && localStorage.getItem(BOOKING_DRAFT_KEY)){
+    if((event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user){
       // Defer out of the auth callback to avoid re-entering Supabase's lock.
       setTimeout(finishAuthCallback,0);
     }

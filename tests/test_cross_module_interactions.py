@@ -65,7 +65,8 @@ async def main():
    await page.wait_for_timeout(120)
    assert 'ainda precisam ser ativadas' in await page.locator('#rc7Admin').inner_text()
    assert await page.locator('#rc7QueueBtn').count()==0
-   assert await page.locator('#rc7PricePro').count()==0
+   # Materials pricing is now independently enabled; absent waitlist must stay disabled.
+   assert await page.locator('#rc7PricePro').count()==1
    await go('clients');await modal('[data-client]','Perfil da cliente')
    await go('catalog')
    for b,t in [('[data-new-procedure]','Novo procedimento'),('[data-edit-procedure]','Editar procedimento'),('[data-methods]','Métodos'),('[data-new-material]','Novo material'),('[data-new-accessory]','Novo acessório')]:await modal(b,t)

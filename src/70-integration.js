@@ -49,10 +49,10 @@ async function bootstrapBackendPublic(){
     const professionals=(x.professionals||[]).map(p=>({id:p.id,name:p.public_name,image:assetUrl(p.photo_path),instagram:p.instagram_url||'',whatsapp:p.whatsapp_phone||'',pixKey:'',active:true,bookable:true}));
     const materials=(c.materials||[]).map(m=>{const comp=x.requirements.filter(r=>r.material_id===m.id).map(r=>r.variation_id?`${r.service_id}/${r.method_id}/${r.variation_id}`:r.method_id?`${r.service_id}/${r.method_id}`:r.service_id);const vars=(c.material_variants||[]).filter(v=>v.material_id===m.id);return{id:m.id,name:m.name,image:assetUrl(m.image_path),description:m.description||'',colors:[...new Set(vars.map(v=>v.color).filter(Boolean))],sizes:[...new Set(vars.map(v=>v.size).filter(Boolean))],variants:vars,compatibility:comp,active:true,internalCost:0};});
     const accessories=(c.accessories||[]).map(a=>{const comp=x.serviceAccessories.filter(r=>r.accessory_id===a.id).map(r=>r.variation_id?`${r.service_id}/${r.method_id}/${r.variation_id}`:r.method_id?`${r.service_id}/${r.method_id}`:r.service_id);return{id:a.id,name:a.name,image:assetUrl(a.image_path),price:Number(a.price||0),compatibility:comp.length?comp:['*'],active:true};});
-    state.procedures=procedures; state.professionals=professionals; state.materials=materials; state.accessories=accessories; state.materialRequirements=x.requirements||[];state.materialPrices=x.materialPrices||[];state.rc7Installed=!!x.rc7Installed;
+    state.procedures=procedures; state.professionals=professionals; state.materials=materials; state.accessories=accessories; state.materialRequirements=x.requirements||[];state.materialPrices=x.materialPrices||[];state.materialPricesReady=!!x.materialPricesReady;state.rc7Installed=!!x.rc7Installed;
     state.settings.publicSundays=(x.sundays||[]).filter(s=>s.is_open).map(s=>s.service_date);if(x.brand?.hero_image_path)state.media.hero=assetUrl(x.brand.hero_image_path);if(x.consent?.text!=null)state.settings.consentText=x.consent.text;if(x.consent?.version)state.settings.consentVersion=x.consent.version;
     state.availability={}; for(const p of professionals){const rs=(x.rules||[]).filter(r=>r.professional_id===p.id&&r.is_active);state.availability[p.id]={weekdays:[...new Set(rs.map(r=>Number(r.weekday)))],start:rs.map(r=>String(r.start_time).slice(0,5)).sort()[0]||'08:00',end:rs.map(r=>String(r.end_time).slice(0,5)).sort().at(-1)||'18:00',blocks:(x.exceptions||[]).filter(e=>e.professional_id===p.id&&!e.is_available).map(e=>({date:e.exception_date,reason:'Exceção de agenda'}))};}
-    saveState(); renderHome();renderCatalog(); if(routeHash()==='booking')renderBooking();
+    saveState(); publicCatalogReady=true; renderHome();renderCatalog(); if(routeHash()==='booking')renderBooking(); finishAuthCallback();
   }catch(e){console.error('Backend bootstrap failed',e);notify('Não foi possível atualizar os dados online agora.','Conexão');}
 }
 function authModal(prefill=''){
@@ -73,8 +73,8 @@ function authModal(prefill=''){
      if(button.disabled)return;
      button.disabled=true;
      try{
-       savePendingBookingDraft();
-       const r=await DDB.signUp(address,password,booking.clientName,authReturnUrl());
+       const pendingDraft=savePendingBookingDraft();
+       const r=await DDB.signUp(address,password,booking.clientName,authReturnUrl(),pendingDraft);
        if(r.session){closeModal();resolve(true);return;}
        // Supabase Auth may mask existing confirmed accounts to prevent user enumeration.
        // A null session does NOT prove a confirmation email was sent.
@@ -130,7 +130,7 @@ async function submitRequest(){
   const idempotency=booking.requestId||(booking.requestId=crypto.randomUUID());
   const id=await DDB.submitBooking({p_rc7_idempotency_key:idempotency,p_rc7_material_choices:booking.materialChoices||{},p_professional_id:booking.professionalId,p_service_id:service.id,p_method_id:isMaintenanceBooking(booking)?null:(booking.methodId||null),p_variation_id:isMaintenanceBooking(booking)?null:(booking.variationId||null),p_scheduled_start:when,p_client_name:booking.clientName,p_client_phone:booking.phone,p_client_email:booking.email,p_notes:booking.note||null,p_brings_own_material:booking.materialProvider==='client',p_option_ids:optionIds,p_accessory_ids:isMaintenanceBooking(booking)?[]:(booking.accessoryIds||[]),p_material_variant_id:isMaintenanceBooking(booking)?null:materialVariantId,p_reference_image_path:ref,p_consent_accepted:booking.consentAccepted===true,p_maintenance_of_service_id:p?.special==='maintenance'?(booking.maintenanceTargetId||null):null},booking.anamnesis,booking.anamnesisMode==='reuse');
   // O consentimento persistente será emitido/aceito pelo fluxo seguro do backend; não há INSERT direto em tabela protegida.
-  openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); booking=newBooking();stepIndex=0;
+  openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); try{localStorage.removeItem(BOOKING_DRAFT_KEY);}catch{} booking=newBooking();stepIndex=0;
  }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação foi criada, mas a ficha capilar não foi salva. Não reenvie: entre em contato com a D&D para completar a ficha.':(e.message||'Não foi possível enviar a solicitação.'),'Erro no agendamento');}
  finally{bookingSubmissionPending=false;$('#nextBtn').disabled=false;}
 }

@@ -369,53 +369,100 @@ let booking = newBooking();
 let stepIndex = 0;
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
 const BOOKING_DRAFT_TTL=24*60*60*1000;
-const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialProvider','professionalId','date','period','time'];
+const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialId','color','materialProvider','professionalId','date','period','time'];
+let publicCatalogReady=false;
+let authRecoveryStarted=false;
+let authRecoveryCompleted=false;
 function cleanBookingDraft(input={}) {
   const draft={};
   for(const key of BOOKING_DRAFT_FIELDS){
     const val=input?.[key];
-    if((key==='tags'||key==='accessoryIds')&&Array.isArray(val)) draft[key]=val.filter(x=>typeof x==='string');
+    if((key==='tags'||key==='accessoryIds')&&Array.isArray(val)) draft[key]=val.filter(x=>typeof x==='string'&&x.length<=120).slice(0,40);
     else if(key==='materialChoices'&&val&&typeof val==='object'&&!Array.isArray(val))
-      draft[key]=Object.fromEntries(Object.entries(val).filter(([k,v])=>typeof k==='string'&&typeof v==='string'));
-    else if(typeof val==='string') draft[key]=val;
+      draft[key]=Object.fromEntries(Object.entries(val).filter(([k,v])=>typeof k==='string'&&k.length<=120&&typeof v==='string'&&v.length<=120).slice(0,40));
+    else if(typeof val==='string'&&val.length<=240) draft[key]=val;
   }
   return draft;
 }
 function appBaseUrl(){ return new URL('./', location.href.split('#')[0].split('?')[0]).href; }
-// Supabase owns the URL fragment during e-mail confirmation. Do not append our router hash here.
+// The site owns #booking; the Supabase callback owns its own fragment.
 function authReturnUrl(){ return appBaseUrl(); }
-function savePendingBookingDraft(){
-  // Email confirmation may reopen in another tab. Keep only nonsensitive selections.
-  // Never store anamnese, photos, Pix, internal records or medical details here.
-  try{
-    // Lista fechada: novos campos privados nunca passam a ser armazenados por acidente.
-    const safe=cleanBookingDraft(booking);
-    localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify({booking:safe,stepIndex,createdAt:Date.now()}));
-  }catch{}
+function currentBookingDraft(){
+  return {version:3,booking:cleanBookingDraft(booking),stepId:steps()[stepIndex]?.id||'client',stepIndex,createdAt:Date.now()};
 }
-function restorePendingBookingDraft(){ try{const raw=localStorage.getItem(BOOKING_DRAFT_KEY);if(!raw)return false;const d=JSON.parse(raw);if(!d?.booking||!d.createdAt||Date.now()-Number(d.createdAt)>BOOKING_DRAFT_TTL){localStorage.removeItem(BOOKING_DRAFT_KEY);return false;}booking={...newBooking(),...cleanBookingDraft(d.booking)};stepIndex=Math.max(0,Math.min(steps().length-1,Number(d.stepIndex)||0));localStorage.removeItem(BOOKING_DRAFT_KEY);return true;}catch{return false;} }
-function hasAuthCallback(){ const h=location.hash; return h.includes('access_token=')||h.includes('refresh_token=')||h.includes('error_code=')||h.includes('error_description='); }
-let authRecoveryStarted=false;
+function savePendingBookingDraft(){
+  // Share only NON-sensitive selections via auth user_metadata so an e-mail opened
+  // in another browser can still recover the draft. Never include name, telephone,
+  // e-mail, anamnesis, references, consent, financial details or medical notes.
+  const draft=currentBookingDraft();
+  try {localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify(draft));} catch {}
+  return draft;
+}
+function readPendingBookingDraft(session){
+  let local=null;
+  try{const raw=localStorage.getItem(BOOKING_DRAFT_KEY);if(raw)local=JSON.parse(raw);}catch{}
+  const remote=session?.user?.user_metadata?.ddb_booking_draft;
+  for(const d of [remote,local]){
+    if(!d||typeof d!=='object'||!d.booking||typeof d.booking!=='object')continue;
+    const age=Date.now()-Number(d.createdAt);
+    if(!Number.isFinite(age)||age<0||age>BOOKING_DRAFT_TTL)continue;
+    const safe=cleanBookingDraft(d.booking);
+    if(!safe.procedureId)continue;
+    return {...d,booking:safe};
+  }
+  return null;
+}
+function restorePendingBookingDraft(session){
+  // NEVER restore against the empty boot state. The old code clamped the saved
+  // stepIndex using steps() before the live catalog arrived, and lost the draft.
+  if(!publicCatalogReady)return false;
+  const d=readPendingBookingDraft(session);
+  if(!d)return false;
+  if(!getProcedure(d.booking.procedureId)){
+    notify('Seu procedimento ainda não está disponível no catálogo. O rascunho foi preservado.','Retomada pendente');
+    return false;
+  }
+  booking={...newBooking(),...d.booking,clientName:String(session?.user?.user_metadata?.full_name||''),email:String(session?.user?.email||'')};
+  const flow=steps();
+  const savedId=String(d.stepId||'');
+  const targetIndex=flow.findIndex(x=>x.id===savedId);
+  const clientIndex=flow.findIndex(x=>x.id==='client');
+  const previousIndex=targetIndex>=0?targetIndex:(Number.isFinite(Number(d.stepIndex))?Math.floor(Number(d.stepIndex)):0);
+  // Personal information, hair anamnesis, references and consent were deliberately
+  // NOT persisted; resume from client details so they can be entered safely again.
+  stepIndex=Math.max(0,Math.min(previousIndex,clientIndex>=0?clientIndex:flow.length-1));
+  // Keep a non-sensitive local draft until the request is actually submitted.
+  // A page refresh during the client/anamnesis steps must not reset the booking.
+  try{localStorage.setItem(BOOKING_DRAFT_KEY,JSON.stringify({...d,booking:cleanBookingDraft(booking),stepId:'client'}));}catch{}
+  // The non-sensitive metadata draft can be cleared after the page has recovered it.
+  // If the cleanup fails, the UI is still usable and an already-restored draft isn't lost.
+  if(session?.user?.user_metadata?.ddb_booking_draft){
+    Promise.resolve().then(()=>DDB.sb.auth.updateUser({data:{ddb_booking_draft:null}})).catch(e=>console.warn('Draft cleanup deferred',e));
+  }
+  return true;
+}
+function hasAuthCallback(){
+  const h=location.hash;
+  return h.includes('access_token=')||h.includes('refresh_token=')||h.includes('error_code=')||h.includes('error_description=')||new URLSearchParams(location.search).has('code');
+}
 async function finishAuthCallback(){
-  if(authRecoveryStarted)return;
+  // Wait for the real catalog before evaluating stage indices, and never discard
+  // a draft if auth isn't ready yet. onAuthStateChange can retry later.
+  if(authRecoveryStarted||authRecoveryCompleted||!publicCatalogReady)return;
   authRecoveryStarted=true;
   const callback=hasAuthCallback();
   try{
-    // Supabase may consume and remove the token fragment before app.js initializes.
-    // Recover a pending signup by checking the authenticated session, not only the hash.
     const session=await DDB.session();
-    if(!session?.user){
-      if(callback && hasAuthCallback()) console.warn('D&D: authentication callback has no session yet');
-      return;
-    }
-    if(restorePendingBookingDraft()){
+    if(!session?.user)return;
+    if(restorePendingBookingDraft(session)){
+      authRecoveryCompleted=true;
       history.replaceState(null,'',appBaseUrl()+'#booking');
       renderPublicRoute();
+      notify('As escolhas do seu atendimento foram recuperadas. Confira os dados e continue o agendamento.','Agendamento recuperado');
       return;
     }
-    // Only normalize a callback if it is still in the address bar.
     if(callback && hasAuthCallback()){
-      history.replaceState(null,'',appBaseUrl()+'#booking');
+      history.replaceState(null,'',appBaseUrl()+'#account');
       renderPublicRoute();
     }
   }catch(e){console.error('Auth recovery failed',e);}
@@ -430,7 +477,7 @@ function initPublic(){
   // Run even when the SDK has already cleaned the confirmation hash.
   finishAuthCallback();
   DDB.sb.auth.onAuthStateChange((event,session)=>{
-    if((event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user && localStorage.getItem(BOOKING_DRAFT_KEY)){
+    if((event==='SIGNED_IN'||event==='INITIAL_SESSION') && session?.user){
       // Defer out of the auth callback to avoid re-entering Supabase's lock.
       setTimeout(finishAuthCallback,0);
     }
@@ -974,17 +1021,63 @@ function editMethod(pid,mid){const p=getProcedure(pid),m=mid?getMethod(p,mid):{i
 function editVariations(pid,mid){const p=getProcedure(pid),m=getMethod(p,mid);openModal(`Variações — ${m.name}`,`<button class="btn gold" id="newVariation">Nova variação</button>${(m.variations||[]).map(v=>`<div class="row"><div><b>${esc(v.name)}</b></div><button class="btn small" data-edit-var="${v.id}">Editar</button></div>`).join('')||'<p class="empty-state">Nenhuma variação.</p>'}`,root=>{$('#newVariation',root).onclick=()=>editVariation(pid,mid);$$('[data-edit-var]',root).forEach(b=>b.onclick=()=>editVariation(pid,mid,b.dataset.editVar));});}
 function editVariation(pid,mid,vid){const p=getProcedure(pid),m=getMethod(p,mid),v=vid?getVariation(m,vid):{id:uid('var'),name:'',image:'',active:true,descriptionRequired:false,options:{tags:[],sizes:[],thicknesses:[],required:{}}};let image=v.image||'';openModal(vid?'Editar variação':'Nova variação',`<form id="varForm" class="form"><label>Nome<input name="name" value="${esc(v.name)}" required></label><label>Duração interna estimada (minutos)<input name="durationMinutes" type="number" min="0" step="15" value="${Number(v.durationMinutes||0)}" placeholder="Herda do método/procedimento se vazio"></label>${uploadField('varImage','Imagem da variação',image)}${catalogOptionEditor('tags','Características disponíveis',v.options?.tags)}${catalogOptionEditor('sizes','Tamanhos',v.options?.sizes)}${catalogOptionEditor('thicknesses','Espessuras',v.options?.thicknesses)}${requirementFields(v.options||{})}<label class="toggle-option"><input name="descriptionRequired" type="checkbox" ${v.descriptionRequired?'checked':''}><span>Exigir descrição da cliente</span></label><button class="btn gold">Salvar</button></form>`,root=>{bindCatalogOptionEditors(root);bindUpload('varImage',()=>image,x=>image=x);$('#varForm',root).onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{const opts=optionsFromForm(f),imagePath=await adminAsset(image,'catalog/variations'),variationId=await DDB.saveVariation({id:vid||null,methodId:mid,name:f.get('name'),description:v.description||'',imagePath,price:v.price??null,duration:Number(f.get('durationMinutes')||0)||null,active:true,descriptionRequired:f.has('descriptionRequired')});await DDB.replaceOptions(pid,mid,variationId,adminOptionRows(opts));await DDB.replaceFieldRequirements(pid,mid,variationId,adminRequirementRows(opts));closeModal();await bootstrapBackendPublic();editVariations(pid,mid);}catch(err){console.error(err);notify(err.message||'Não foi possível salvar a variação.');}};});}
 function compatSelector(selected=[]){const procs=getState().procedures.filter(p=>p.special!=='maintenance');const rows=[];for(const p of procs){rows.push(`<label class="toggle-option"><input type="checkbox" name="compat" value="${p.id}" ${selected.includes(p.id)?'checked':''}><span>${esc(p.category)} → ${esc(p.name)}</span></label>`);for(const m of (p.methods||[])){const mk=`${p.id}/${m.id}`;rows.push(`<label class="toggle-option compat-child"><input type="checkbox" name="compat" value="${mk}" ${selected.includes(mk)?'checked':''}><span>↳ ${esc(m.name)}</span></label>`);for(const v of (m.variations||[])){const vk=`${p.id}/${m.id}/${v.id}`;rows.push(`<label class="toggle-option compat-grandchild"><input type="checkbox" name="compat" value="${vk}" ${selected.includes(vk)?'checked':''}><span>↳↳ ${esc(v.name)}</span></label>`);}}}return `<fieldset><legend>Compatível com</legend><p class="muted">Selecione por nomes e hierarquia. IDs internos não aparecem para as profissionais.</p><div class="checkgrid compat-list"><label class="toggle-option"><input type="checkbox" name="compat" value="*" ${selected.includes('*')?'checked':''}><span>Todos os procedimentos</span></label>${rows.join('')}</div></fieldset>`;}
-function editMaterial(id){const db=getState(),m=id?db.materials.find(x=>x.id===id):{id:uid('mat'),name:'',image:'',colors:[],sizes:[],compatibility:[],active:true};let image=m.image||'';openModal(id?'Editar material':'Novo material',`<form id="matForm" class="form"><label>Nome<input name="name" value="${esc(m.name)}" required></label>${uploadField('matImage','Imagem do material',image)}<label>Cores<input name="colors" value="${esc((m.colors||[]).join(', '))}"></label><label>Tamanhos/opções<input name="sizes" value="${esc((m.sizes||[]).join(', '))}"></label><label>Valor interno do material (financeiro)<input name="internalCost" type="number" min="0" step="0.01" value="${Number(m.internalCost||0)}"></label>${compatSelector(m.compatibility)}<div id="rc7QuantityEditor" class="rc7-quantity-editor"><p class="muted">Selecione as compatibilidades acima para configurar a quantidade por variação.</p></div><label class="toggle-option"><input name="active" type="checkbox" ${m.active?'checked':''}><span>Ativo</span></label><button class="btn gold">Salvar</button></form>`,root=>{
+function materialOptionValues(form,key){
+ const vals=[...form.getAll('opt_'+key),form.get('draft_'+key)];
+ const unique=new Set();return vals.map(v=>String(v||'').trim()).filter(value=>{if(!value)return false;const k=value.toLocaleLowerCase('pt-BR');if(unique.has(k))return false;unique.add(k);return true;});
+}
+function materialVariantCombinations(colors,sizes){
+ const out=[];
+ if(colors.length&&sizes.length){for(const color of colors)for(const size of sizes)out.push({color,size});}
+ else if(colors.length){for(const color of colors)out.push({color,size:null});}
+ else if(sizes.length){for(const size of sizes)out.push({color:null,size});}
+ return out;
+}
+async function editMaterial(id){
+ const db=getState(),m=id?db.materials.find(x=>x.id===id):{id:uid('mat'),name:'',image:'',colors:[],sizes:[],variants:[],compatibility:[],active:true};
+ let image=m.image||'';
+ let internalCost=Number(m.internalCost||0);
+ if(id){try{internalCost=await DDB.materialInternalCost(id);}catch(error){console.error(error);return notify('Não consegui carregar o custo interno do material. Tente novamente antes de editar.','Consulta necessária');}}
+ openModal(id?'Editar material':'Novo material',`<form id="matForm" class="form"><label>Nome<input name="name" value="${esc(m.name)}" required></label>${uploadField('matImage','Imagem do material',image)}${catalogOptionEditor('materialColors','Cores disponíveis',m.colors)}${catalogOptionEditor('materialSizes','Tamanhos/opções do material',m.sizes)}<fieldset><legend>Variações disponíveis</legend><p class="muted">Marque somente as combinações de cor e tamanho que existem. Desmarcar uma combinação a retira das opções disponíveis sem apagar seu histórico.</p><div id="materialVariantChoices" class="checkgrid"></div></fieldset><label>Valor interno do material (financeiro)<input name="internalCost" type="number" min="0" step="0.01" value="${internalCost}"></label>${compatSelector(m.compatibility)}<div id="rc7QuantityEditor" class="rc7-quantity-editor"><p class="muted">Selecione as compatibilidades acima para configurar a quantidade por variação.</p></div><label class="toggle-option"><input name="active" type="checkbox" ${m.active?'checked':''}><span>Ativo</span></label><button class="btn gold">Salvar</button></form>`,root=>{
   bindUpload('matImage',()=>image,v=>image=v);
+  bindCatalogOptionEditors(root);
+  const knownKeys=new Set(),selectedKeys=new Set();
+  const keyOf=v=>JSON.stringify([v.color||null,v.size||null]);
+  // Existing colors/sizes may have only SOME allowed combinations. Never reactivate
+  // a previously unavailable combination simply by reopening and saving the editor.
+  if(id)for(const v of materialVariantCombinations(m.colors||[],m.sizes||[]))knownKeys.add(keyOf(v));
+  for(const v of (m.variants||[])){const key=keyOf(v);knownKeys.add(key);if(v.is_active!==false)selectedKeys.add(key);}
+  const variantsFromFields=()=>{const f=new FormData($('#matForm',root));return materialVariantCombinations(materialOptionValues(f,'materialColors'),materialOptionValues(f,'materialSizes'));};
+  const renderVariants=()=>{const variants=variantsFromFields();const target=$('#materialVariantChoices',root);
+    target.innerHTML=variants.length?variants.map(v=>{const key=keyOf(v);if(!knownKeys.has(key)){knownKeys.add(key);selectedKeys.add(key);}return `<label class="toggle-option"><input type="checkbox" data-material-variant="${esc(key)}" ${selectedKeys.has(key)?'checked':''}><span>${esc([v.color,v.size].filter(Boolean).join(' • '))}</span></label>`;}).join(''):'<p class="muted">Adicione ao menos uma cor ou tamanho para definir variantes.</p>';
+  };
+  $('#materialVariantChoices',root).addEventListener('change',e=>{const input=e.target.closest('[data-material-variant]');if(!input)return;input.checked?selectedKeys.add(input.dataset.materialVariant):selectedKeys.delete(input.dataset.materialVariant);});
+  $$('[data-option-editor]',root).forEach(editor=>{editor.addEventListener('input',renderVariants);editor.addEventListener('click',e=>{if(e.target.closest('[data-add-option], [data-remove-option]'))queueMicrotask(renderVariants);});});
+  renderVariants();
   const draftQuantities=new Map();
   const updateQty=()=>{ $$('[data-quantity-key]',root).forEach(el=>draftQuantities.set(el.dataset.quantityKey,el.value));const compat=$$('[name="compat"]:checked',root).map(x=>x.value),scopes=adminScopes(compat),old=getState().materialRequirements||[];
    $('#rc7QuantityEditor',root).innerHTML=`<h3>Pacotes necessários por variação</h3><p class="muted">Informe a quantidade para cada compatibilidade selecionada. Uma regra específica de variação substitui a regra geral para o mesmo material.</p>${scopes.map((sc,i)=>{const key=[sc.service_id,sc.method_id,sc.variation_id].filter(Boolean).join('/');const service=getProcedure(sc.service_id),method=getMethod(service,sc.method_id),variation=getVariation(method,sc.variation_id),label=[service?.name,method?.name,variation?.name].filter(Boolean).join(' → ');const rule=old.find(r=>String(r.material_id)===String(m.id)&&String(r.service_id)===String(sc.service_id)&&String(r.method_id||'')===String(sc.method_id||'')&&String(r.variation_id||'')===String(sc.variation_id||''));return `<label> ${esc(label||key)} <input type="number" data-quantity-index="${i}" data-quantity-key="${esc(key)}" min="0.25" step="0.25" value="${esc(draftQuantities.get(key)??rule?.estimated_quantity??'')}" placeholder="Pacotes (obrigatório)"></label>`;}).join('')||'<p class="muted">Selecione um procedimento, método ou variação acima.</p>'}`;
   };
   $$('[name="compat"]',root).forEach(el=>el.addEventListener('change',updateQty));updateQty();
-  $('#matForm',root).onsubmit=async e=>{e.preventDefault();if(!getState().rc7Installed)return notify('A migração RC7 ainda não está ativa no Supabase. Nenhum material foi modificado.','Configuração pendente');const f=new FormData(e.target);try{const colors=csv(f.get('colors')),sizes=csv(f.get('sizes')),variants=[];if(colors.length&&sizes.length){for(const color of colors)for(const size of sizes)variants.push({color,size});}else if(colors.length){for(const color of colors)variants.push({color,size:null});}else if(sizes.length){for(const size of sizes)variants.push({color:null,size});}const compat=$$('[name="compat"]:checked',root).map(x=>x.value);const scopes=adminScopes(compat);const rules=scopes.map((scope,i)=>({...scope,quantity:Number($(`[data-quantity-index="${i}"]`,root)?.value)}));
-   if(rules.some(r=>!Number.isFinite(r.quantity)||r.quantity<=0))throw Error('Configure os pacotes de cada procedimento/variação selecionada.');
-   const imagePath=await adminAsset(image,'catalog/materials');const materialId=await DDB.saveMaterial({id:id||null,name:f.get('name'),imagePath,internalCost:Number(f.get('internalCost')||0),active:f.has('active'),variants});
-   await DDB.replaceMaterialQuantities(materialId,rules);closeModal();await bootstrapBackendPublic();renderModule();notify('Material salvo.');}catch(err){console.error(err);notify(err.message||'Não foi possível salvar o material.');}};});}
+  $('#matForm',root).onsubmit=async e=>{e.preventDefault();
+   if(!getState().materialPricesReady)return notify('O cadastro avançado de materiais ainda não está disponível no Supabase. Nenhum material foi alterado.','Configuração pendente');
+   const form=e.target,f=new FormData(form);const saveBtn=form.querySelector('button[type="submit"],button.btn.gold');
+   try{
+    const colors=materialOptionValues(f,'materialColors'),sizes=materialOptionValues(f,'materialSizes');
+    const variants=materialVariantCombinations(colors,sizes).filter(v=>selectedKeys.has(keyOf(v)));
+    if((colors.length||sizes.length)&&!variants.length)throw Error('Marque pelo menos uma variação disponível, ou remova as opções de cor e tamanho.');
+    const compat=$$('[name="compat"]:checked',root).map(x=>x.value),scopes=adminScopes(compat);
+    const rules=scopes.map((scope,i)=>({...scope,quantity:Number($(`[data-quantity-index="${i}"]`,root)?.value)}));
+    if(rules.some(r=>!Number.isFinite(r.quantity)||r.quantity<=0))throw Error('Configure os pacotes de cada procedimento/variação selecionada.');
+    saveBtn.disabled=true;
+    const imagePath=await adminAsset(image,'catalog/materials');
+    await DDB.saveMaterialComplete({id:id||null,name:f.get('name'),imagePath,internalCost:Number(f.get('internalCost')||0),active:f.has('active'),variants},rules);
+    closeModal();await bootstrapBackendPublic();renderModule();notify('Material e quantidades salvos.');
+   }catch(err){console.error(err);notify(err.message||'Não foi possível salvar o material.');}
+   finally{saveBtn.disabled=false;}
+  };
+ });
+}
+
 function editAccessory(id){const db=getState(),a=id?db.accessories.find(x=>x.id===id):{id:uid('acc'),name:'',image:'',price:0,compatibility:[],active:true};let image=a.image||'';openModal(id?'Editar acessório':'Novo acessório',`<form id="accForm" class="form"><label>Nome<input name="name" value="${esc(a.name)}" required></label><label>Preço<input name="price" type="number" min="0" step="0.01" value="${Number(a.price||0)}"></label>${uploadField('accImage','Imagem do acessório',image)}${compatSelector(a.compatibility)}<label class="toggle-option"><input name="active" type="checkbox" ${a.active?'checked':''}><span>Ativo</span></label><button class="btn gold">Salvar</button></form>`,root=>{bindUpload('accImage',()=>image,v=>image=v);$('#accForm',root).onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target);try{const imagePath=await adminAsset(image,'catalog/accessories');const accessoryId=await DDB.saveAccessory({id:id||null,name:f.get('name'),description:a.description||'',imagePath,price:Number(f.get('price')||0),active:f.has('active')});const compat=$$('[name="compat"]:checked',root).map(x=>x.value);await DDB.replaceAccessoryCompatibility(accessoryId,adminScopes(compat));closeModal();await bootstrapBackendPublic();renderModule();notify('Acessório salvo.');}catch(err){console.error(err);notify(err.message||'Não foi possível salvar o acessório.');}};});}
 
 // Connect the catalog controls to their existing Supabase-backed editors.
@@ -1159,10 +1252,10 @@ async function bootstrapBackendPublic(){
     const professionals=(x.professionals||[]).map(p=>({id:p.id,name:p.public_name,image:assetUrl(p.photo_path),instagram:p.instagram_url||'',whatsapp:p.whatsapp_phone||'',pixKey:'',active:true,bookable:true}));
     const materials=(c.materials||[]).map(m=>{const comp=x.requirements.filter(r=>r.material_id===m.id).map(r=>r.variation_id?`${r.service_id}/${r.method_id}/${r.variation_id}`:r.method_id?`${r.service_id}/${r.method_id}`:r.service_id);const vars=(c.material_variants||[]).filter(v=>v.material_id===m.id);return{id:m.id,name:m.name,image:assetUrl(m.image_path),description:m.description||'',colors:[...new Set(vars.map(v=>v.color).filter(Boolean))],sizes:[...new Set(vars.map(v=>v.size).filter(Boolean))],variants:vars,compatibility:comp,active:true,internalCost:0};});
     const accessories=(c.accessories||[]).map(a=>{const comp=x.serviceAccessories.filter(r=>r.accessory_id===a.id).map(r=>r.variation_id?`${r.service_id}/${r.method_id}/${r.variation_id}`:r.method_id?`${r.service_id}/${r.method_id}`:r.service_id);return{id:a.id,name:a.name,image:assetUrl(a.image_path),price:Number(a.price||0),compatibility:comp.length?comp:['*'],active:true};});
-    state.procedures=procedures; state.professionals=professionals; state.materials=materials; state.accessories=accessories; state.materialRequirements=x.requirements||[];state.materialPrices=x.materialPrices||[];state.rc7Installed=!!x.rc7Installed;
+    state.procedures=procedures; state.professionals=professionals; state.materials=materials; state.accessories=accessories; state.materialRequirements=x.requirements||[];state.materialPrices=x.materialPrices||[];state.materialPricesReady=!!x.materialPricesReady;state.rc7Installed=!!x.rc7Installed;
     state.settings.publicSundays=(x.sundays||[]).filter(s=>s.is_open).map(s=>s.service_date);if(x.brand?.hero_image_path)state.media.hero=assetUrl(x.brand.hero_image_path);if(x.consent?.text!=null)state.settings.consentText=x.consent.text;if(x.consent?.version)state.settings.consentVersion=x.consent.version;
     state.availability={}; for(const p of professionals){const rs=(x.rules||[]).filter(r=>r.professional_id===p.id&&r.is_active);state.availability[p.id]={weekdays:[...new Set(rs.map(r=>Number(r.weekday)))],start:rs.map(r=>String(r.start_time).slice(0,5)).sort()[0]||'08:00',end:rs.map(r=>String(r.end_time).slice(0,5)).sort().at(-1)||'18:00',blocks:(x.exceptions||[]).filter(e=>e.professional_id===p.id&&!e.is_available).map(e=>({date:e.exception_date,reason:'Exceção de agenda'}))};}
-    saveState(); renderHome();renderCatalog(); if(routeHash()==='booking')renderBooking();
+    saveState(); publicCatalogReady=true; renderHome();renderCatalog(); if(routeHash()==='booking')renderBooking(); finishAuthCallback();
   }catch(e){console.error('Backend bootstrap failed',e);notify('Não foi possível atualizar os dados online agora.','Conexão');}
 }
 function authModal(prefill=''){
@@ -1183,8 +1276,8 @@ function authModal(prefill=''){
      if(button.disabled)return;
      button.disabled=true;
      try{
-       savePendingBookingDraft();
-       const r=await DDB.signUp(address,password,booking.clientName,authReturnUrl());
+       const pendingDraft=savePendingBookingDraft();
+       const r=await DDB.signUp(address,password,booking.clientName,authReturnUrl(),pendingDraft);
        if(r.session){closeModal();resolve(true);return;}
        // Supabase Auth may mask existing confirmed accounts to prevent user enumeration.
        // A null session does NOT prove a confirmation email was sent.
@@ -1240,7 +1333,7 @@ async function submitRequest(){
   const idempotency=booking.requestId||(booking.requestId=crypto.randomUUID());
   const id=await DDB.submitBooking({p_rc7_idempotency_key:idempotency,p_rc7_material_choices:booking.materialChoices||{},p_professional_id:booking.professionalId,p_service_id:service.id,p_method_id:isMaintenanceBooking(booking)?null:(booking.methodId||null),p_variation_id:isMaintenanceBooking(booking)?null:(booking.variationId||null),p_scheduled_start:when,p_client_name:booking.clientName,p_client_phone:booking.phone,p_client_email:booking.email,p_notes:booking.note||null,p_brings_own_material:booking.materialProvider==='client',p_option_ids:optionIds,p_accessory_ids:isMaintenanceBooking(booking)?[]:(booking.accessoryIds||[]),p_material_variant_id:isMaintenanceBooking(booking)?null:materialVariantId,p_reference_image_path:ref,p_consent_accepted:booking.consentAccepted===true,p_maintenance_of_service_id:p?.special==='maintenance'?(booking.maintenanceTargetId||null):null},booking.anamnesis,booking.anamnesisMode==='reuse');
   // O consentimento persistente será emitido/aceito pelo fluxo seguro do backend; não há INSERT direto em tabela protegida.
-  openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); booking=newBooking();stepIndex=0;
+  openModal('Solicitação enviada!',`<div class="success-modal"><div class="success-icon">✓</div><p>Sua solicitação foi registrada com segurança. A profissional fará a revisão antes da confirmação.</p><div class="modal-actions"><button class="btn" data-home>Voltar ao início</button><button class="btn gold" data-account>Ver meus agendamentos</button></div></div>`,root=>{$('[data-home]',root).onclick=()=>{closeModal();location.hash='#home';};$('[data-account]',root).onclick=()=>{closeModal();location.hash='#account';};}); try{localStorage.removeItem(BOOKING_DRAFT_KEY);}catch{} booking=newBooking();stepIndex=0;
  }catch(e){console.error(e);if(e.partialBookingId)booking.partialSubmissionId=e.partialBookingId;notify(e.partialBookingId?'Sua solicitação foi criada, mas a ficha capilar não foi salva. Não reenvie: entre em contato com a D&D para completar a ficha.':(e.message||'Não foi possível enviar a solicitação.'),'Erro no agendamento');}
  finally{bookingSubmissionPending=false;$('#nextBtn').disabled=false;}
 }

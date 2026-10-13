@@ -10,7 +10,7 @@
     sb,
     async session(){ return (await sb.auth.getSession()).data.session; },
     async signIn(email,password){ const {data,error}=await sb.auth.signInWithPassword({email,password}); if(error) throw error; return data; },
-    async signUp(email,password,fullName,redirectTo){ const {data,error}=await sb.auth.signUp({email,password,options:{data:{full_name:fullName||'Cliente'},...(redirectTo?{emailRedirectTo:redirectTo}:{})}}); if(error) throw error; return data; },
+    async signUp(email,password,fullName,redirectTo,pendingDraft=null){ const metadata={full_name:fullName||'Cliente'}; if(pendingDraft?.booking?.procedureId) metadata.ddb_booking_draft=pendingDraft; const {data,error}=await sb.auth.signUp({email,password,options:{data:metadata,...(redirectTo?{emailRedirectTo:redirectTo}:{})}}); if(error) throw error; return data; },
     async signOut(){ const {error}=await sb.auth.signOut(); if(error) throw error; },
     async resetPassword(email){ const {error}=await sb.auth.resetPasswordForEmail(email,{redirectTo:location.origin+location.pathname+'#account'}); if(error) throw error; },
     async isAdmin(){ try{return !!(await rpc('is_admin'));}catch{return false;} },
@@ -24,10 +24,13 @@
         rpc('get_public_schedule_config')
       ]);
       // Additive RC7 table: absence must not break the existing public catalog.
-      let materialPrices=[], rc7Installed=false;
-      try {materialPrices=await table('ddb_material_prices','professional_id,material_variant_id,discount_unit_amount');rc7Installed=true;}
-      catch(e){console.info('RC7 material prices not installed yet');}
-      return {catalog,professionals,brand,consent,serviceTags,requirements,serviceAccessories,fieldReqs,materialPrices,rc7Installed,rules:schedule?.rules||[],exceptions:schedule?.exceptions||[],sundays:schedule?.sundays||[]};
+      let materialPrices=[], materialPricesReady=false;
+      try {materialPrices=await table('ddb_material_prices','professional_id,material_variant_id,discount_unit_amount');materialPricesReady=true;}
+      catch(e){console.info('Cadastro de preços de materiais ainda não instalado');}
+      // A tabela de preços NÃO comprova que toda a RC7 foi instalada.
+      // Os recursos de remarcação/espera continuam desativados até integração independente.
+      const rc7Installed=false;
+      return {catalog,professionals,brand,consent,serviceTags,requirements,serviceAccessories,fieldReqs,materialPrices,materialPricesReady,rc7Installed,rules:schedule?.rules||[],exceptions:schedule?.exceptions||[],sundays:schedule?.sundays||[]};
     },
     async uploadPublicAsset(dataUrl,folder='admin'){ if(!dataUrl||!String(dataUrl).startsWith('data:')) return dataUrl||null; if(!await this.isAdmin()) throw new Error('admin_required'); const m=/^data:([^;]+);base64,(.+)$/.exec(dataUrl); if(!m||!['image/jpeg','image/png','image/webp'].includes(m[1])||m[2].length>11*1024*1024) throw new Error('Imagem inválida ou maior que 8MB'); const bin=atob(m[2]),bytes=new Uint8Array(bin.length);for(let i=0;i<bin.length;i++)bytes[i]=bin.charCodeAt(i);const ext=(m[1].split('/')[1]||'jpg').replace('jpeg','jpg');const path=`${folder}/${crypto.randomUUID()}.${ext}`;const {error}=await sb.storage.from('public-assets').upload(path,new Blob([bytes],{type:m[1]}),{upsert:false});if(error)throw error;return path; },
     async uploadReference(dataUrl){
@@ -93,6 +96,8 @@
     async replaceMaterialRequirements(materialId,scopes,estimate=null){ return rpc('admin_replace_material_requirements',{p_material_id:materialId,p_scopes:scopes||[],p_estimate:estimate}); },
     async replaceAccessoryCompatibility(accessoryId,scopes){ return rpc('admin_replace_accessory_compatibility',{p_accessory_id:accessoryId,p_scopes:scopes||[]}); },
     async saveMaterial(x){ return rpc('admin_save_material',{p_id:x.id||null,p_name:x.name,p_description:x.description||null,p_image_path:x.imagePath||null,p_internal_cost:x.internalCost??0,p_active:x.active!==false,p_variants:x.variants||[]}); },
+    async saveMaterialComplete(x,rules){ return rpc('ddb_save_material_complete',{p_id:x.id||null,p_name:x.name,p_description:x.description||null,p_image_path:x.imagePath||null,p_internal_cost:x.internalCost??0,p_active:x.active!==false,p_variants:x.variants||[],p_rules:rules||[]}); },
+    async materialInternalCost(id){ const {data,error}=await sb.from('materials').select('internal_cost').eq('id',id).single(); if(error)throw error; return Number(data?.internal_cost||0); },
     async saveAccessory(x){ return rpc('admin_save_accessory',{p_id:x.id||null,p_name:x.name,p_description:x.description||null,p_image_path:x.imagePath||null,p_price:x.price??0,p_active:x.active!==false}); },
     async updateAnamnesis(id,answers,operatorId=null){ return rpc('admin_update_anamnesis',{p_anamnesis_id:id,p_answers:answers,p_operator_id:operatorId}); },
     async reviewHairProfile(appointmentId,answers){ return rpc('ddb_admin_review_hair_profile',{p_appointment_id:appointmentId,p_answers:answers}); },

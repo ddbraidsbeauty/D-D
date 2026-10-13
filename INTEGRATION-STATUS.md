@@ -13,3 +13,7 @@ Código da RC6 preservado como base, com correções e extensão.
 - Cliente pode selecionar destino único Pix/crédito pela RPC; no Pix a transferência é manual e a confirmação administrativa registra pagamento e notificação de forma atômica.
 - Testes com fixtures e ROLLBACK passaram. Não equivale a teste ponta a ponta da interface publicada.
 - Restante da RC8, remarcações, lista de espera, checkout com créditos e integração financeira geral continuam pendentes.
+
+## Materiais (12/10/2026)
+
+A migração isolada `enable_atomic_material_catalog_without_rc7_activation` foi aplicada ao Supabase. O admin agora pode salvar material/variações/quantidades atomicamente após publicar a atualização do front-end, e definir preços por profissional. **Isso não habilita a RC7 de agendamento completo nem lista de espera**. Consulte `CORRECAO_MATERIAIS_RC8_2026-10-12.md`.

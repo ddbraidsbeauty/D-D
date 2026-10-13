@@ -60,7 +60,7 @@ function renderAdmin(state,withPin,onRefresh){
   const adminSections=[...root.querySelectorAll('.rc7-admin-grid > section')];
   const waitlistReady=!!d.available?.waitlist && !!d.available?.offers;
   const refundReady=!!d.available?.refunds;
-  const materialPricesReady=!!state.rc7Installed;
+  const materialPricesReady=!!state.materialPricesReady;
   if(!waitlistReady && adminSections[0])adminSections[0].innerHTML='<h2>Lista de espera</h2><p class="muted">A lista de espera e as propostas de horário ainda precisam ser ativadas no Supabase. Nenhum agendamento foi alterado.</p>';
   if(!refundReady && adminSections[1])adminSections[1].innerHTML='<h2>Devoluções por Pix</h2><p class="muted">Consulta de reembolsos indisponível no momento. Nenhuma transferência foi registrada.</p>';
   if(!materialPricesReady && adminSections[2])adminSections[2].innerHTML='<h2>Valores dos materiais</h2><p class="muted">O cadastro de preços por profissional ainda não foi ativado no Supabase.</p>';
