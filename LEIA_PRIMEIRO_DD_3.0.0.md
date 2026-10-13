@@ -1,6 +1,6 @@
 # D&D Braids Beauty — v3.0.0 (prévia para revisão/homologação)
 
-**Status:** pacote gerado e testado localmente com Supabase simulado. **NÃO publicado no GitHub; nenhum SQL executado em produção.** O site publicado continua como estava.
+**Status:** pacote gerado e testado localmente com Supabase simulado. **Código em revisão na branch de desenvolvimento; a migração das duas RPCs já foi aplicada ao Supabase com autorização.** O site publicado continua como estava.
 
 ## O que mudou
 
@@ -12,7 +12,7 @@
 
 ## ORDEM DE PUBLICAÇÃO (atenção!)
 
-1. **Solicitar autorização específica antes de tocar no banco.** Revisar e executar a migração *somente após aprovação*: `migrations_pending_review/20261013_atomic_booking_and_hair_repair.sql`. Ela cria uma tabela de chaves de envio e as RPCs `ddb_submit_booking_atomic_v1` e `ddb_complete_missing_hair_profile_v1`. **Não executar `backend_rc7.sql`** (script histórico amplo, incompatível com o schema real).
+1. **Migração já instalada com autorização e conferida no Supabase.** Arquivo de referência: `migrations_pending_review/20261013_atomic_booking_and_hair_repair.sql`. Ela cria uma tabela de chaves de envio e as RPCs `ddb_submit_booking_atomic_v1` e `ddb_complete_missing_hair_profile_v1`. **Não executar `backend_rc7.sql`** (script histórico amplo, incompatível com o schema real).
 2. Supabase Dashboard → Authentication → Emails → Templates → **Reset Password**. Colar o assunto e o HTML dos arquivos `email_templates/` (sem alterar o template **Confirm sign up** já aprovado). Salvar. O e-mail sai pelo SMTP do Resend já configurado. Mantenha `{{ .ConfirmationURL }}` inalterado.
 3. Em **Authentication → Emails → Templates / Security notifications**, configure também o template **Password changed** (`email_templates/password_changed.html`) e seu assunto; **habilite o envio dessa notificação de segurança** no projeto. Ela não é enviada se estiver desativada. O template não precisa de `{{ .ConfirmationURL }}`.
 4. Verificar Authentication → URL Configuration: `Site URL: https://ddbraids.com.br/` e Redirect URLs permitindo `https://ddbraids.com.br/` (caminho usado pelo link de recuperação). Não trocar as URLs confirmadas sem necessidade.
@@ -26,7 +26,7 @@
 - O cadastro e recuperação do rascunho já funcionaram em produção antes desta mudança; é importante confirmar que continuam sem regressão depois do deploy.
 - A opção "Não sei identificar" foi **adiada**: o banco atualmente exige um dos 12 códigos. A cliente pode escolher o padrão mais próximo e a profissional revisará a classificação. Não envia valor inválido silenciosamente.
 - A foto de referência/anamnese não é armazenada no rascunho do navegador.
-- A solicitação de 13/10/2026 com pagamento de sinal e ficha pendente **não deve ser apagada, cancelada ou recriada** por este procedimento.
+- A solicitação de 13/10/2026 com pagamento de sinal e ficha pendente **é exclusivamente de teste e deve permanecer até a limpeza final autorizada** por este procedimento.
 - Módulos avançados de carteira, espera/remarcação e demais funcionalidades não foram homologados nesta atualização.
 
 ## Estrutura mínima de publicação

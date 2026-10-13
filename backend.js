@@ -17,6 +17,8 @@
     async changePasswordWithCurrent(currentPassword,newPassword){
       const {data:before,error:sessionError}=await sb.auth.getUser();
       if(sessionError||!before?.user?.id)throw new Error('Sua sessão expirou. Entre novamente para alterar a senha.');
+      // Supabase Auth (supabase-js v2.102+) validates the existing password
+      // server-side, with no extra login and no password kept in browser storage.
       const {error}=await sb.auth.updateUser({password:newPassword,current_password:currentPassword});
       if(error){
         if(/current.password|senha atual|invalid password/i.test(String(error.message||'')))
@@ -57,6 +59,9 @@
     async saveHairProfile(appointmentId,answers){return rpc('save_client_hair_profile',{p_appointment_id:appointmentId,p_answers:this.normalizeHair(answers)});},
     async submitBooking(payload,answers,reuse=false){
       if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required');
+      // This RPC makes the appointment AND its hair profile one database transaction.
+      // DO NOT fall back to create_booking_request_v3: that old 2-step path
+      // could leave a paid appointment without an anamnesis.
       if(payload.p_brings_own_material===true) throw new Error('O cálculo de materiais próprios ainda precisa ser configurado pela D&D.');
       try{
         return await rpc('ddb_submit_booking_atomic_v1',{p_payload:{...payload,p_profile_answers:this.normalizeHair(answers),p_reuse_profile:!!reuse}});
