@@ -62,7 +62,6 @@
       // This RPC makes the appointment AND its hair profile one database transaction.
       // DO NOT fall back to create_booking_request_v3: that old 2-step path
       // could leave a paid appointment without an anamnesis.
-      if(payload.p_brings_own_material===true) throw new Error('O cálculo de materiais próprios ainda precisa ser configurado pela D&D.');
       try{
         return await rpc('ddb_submit_booking_atomic_v1',{p_payload:{...payload,p_profile_answers:this.normalizeHair(answers),p_reuse_profile:!!reuse}});
       }catch(e){

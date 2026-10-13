@@ -32,3 +32,5 @@
 ## Estrutura mínima de publicação
 
 `index.html`, `app.js`, `backend.js`, `logic.js`, `rc7-ui.js`, `styles.css`, pasta `assets/`, arquivo `CNAME` na raiz. Os fontes em `src/`, `styles/` e testes são para manutenção. O workflow GitHub Actions existente continua válido.
+
+**Pendente antes do merge:** revisar/aplicar `migrations_pending_review/20261013_restore_client_supplied_materials.sql` para manter a opção de material fornecido pela cliente. Esta correção NÃO foi aplicada ao banco.

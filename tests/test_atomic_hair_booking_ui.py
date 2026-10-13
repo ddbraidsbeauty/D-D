@@ -48,6 +48,21 @@ async def main():
    assert 'Sinal pago' in await page.locator('#accountList').inner_text()
    assert not errors,(width,errors)
    print(f'PASS incomplete hair recovery UI {width}px: existing booking and deposit unchanged')
+   # Regression: own materials still reach the server in the atomic flow.
+   await page.evaluate("""() => {
+     window.__materialRequest=null;
+     window.DDB.sb.rpc=async(name,args)=>{
+       if(name==='ddb_submit_booking_atomic_v1'){window.__materialRequest=args.p_payload;return {data:'booking-ok',error:null};}
+       return {data:null,error:null};
+     };
+   }""")
+   result=await page.evaluate("""() => window.DDB.submitBooking(
+      {p_consent_accepted:true,p_brings_own_material:true,p_rc7_idempotency_key:'12345678-1234-1234-1234-123456789012'},
+      {hairType:'Cacheado',classification:'3B'}
+   )""")
+   payload=await page.evaluate('window.__materialRequest')
+   assert result=='booking-ok' and payload['p_brings_own_material'] is True,(width,'own material flag lost',payload)
+   print(f'PASS own material flag reaches atomic RPC mock {width}px')
    await page.close()
   await browser.close()
 if __name__=='__main__':asyncio.run(main())
