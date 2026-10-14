@@ -228,6 +228,20 @@ function openChangePassword(){
   });
 }
 
+function clientDepositLabel(status){
+  if(status==='paid')return 'Sinal pago ✓';
+  if(status==='refund_pending')return 'Sinal pago • destino pendente';
+  if(status==='refunded')return 'Sinal reembolsado';
+  if(status==='credited')return 'Sinal convertido em crédito';
+  return 'Sinal pendente';
+}
+function clientCancellationError(error){
+  const message=String(error?.message||'');
+  if(message.includes('cancellation_cutoff_passed'))return 'O prazo para cancelar este atendimento já terminou. Entre em contato com a D&D.';
+  if(message.includes('appointment_not_cancellable'))return 'Este atendimento não pode ser cancelado ou já foi encerrado. Atualize a página.';
+  if(/not authenticated|jwt|session/i.test(message))return 'Sua sessão expirou. Entre novamente na sua conta.';
+  return 'Não foi possível concluir o cancelamento. Tente novamente ou entre em contato com a D&D.';
+}
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
  // Clear account-only controls before checking the current session.
@@ -254,7 +268,7 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${a.deposit_status==='paid'?'Sinal pago ✓':'Sinal pendente'} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$('.account-cancel').forEach(b=>b.onclick=()=>{
+ try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$('.account-cancel').forEach(b=>b.onclick=()=>{
     const selected=list.find(a=>String(a.id)===String(b.dataset.id));
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
@@ -274,7 +288,7 @@ async function renderAccount(){
           await renderAccount();
         }catch(e){
           console.error('Cancelamento não concluído:',e);
-          notify('O cancelamento não foi confirmado. '+(e.message||'Tente novamente ou contate a D&D.'),'Erro no cancelamento');
+          notify(clientCancellationError(e),'Erro no cancelamento');
         }finally{b.disabled=false;}
       }
     });
