@@ -379,3 +379,14 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
  .rc7-pending-item-main strong{font-size:16px}
  .rc7-admin-panel h3{font-size:16px}
 }
+
+/* Padronização das imagens públicas 4:5 — sem cortar imagens enviadas nesse formato. */
+#homePros .pro{height:auto;aspect-ratio:4/5;min-height:0}
+#homePros .pro img,#catalogCards .card img,#featured .card img,
+#bookingBody .visual-choice img,#bookingBody .hair-choice img{
+  display:block;width:100%;height:auto;max-height:none;aspect-ratio:4/5;
+  object-fit:contain;object-position:center;background:var(--solid);
+}
+#homePros .pro img{height:100%}
+#bookingBody .visual-choices{grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),280px));}
+@media(max-width:700px){#bookingBody .visual-choices{grid-template-columns:minmax(0,280px)}}
