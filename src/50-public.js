@@ -268,7 +268,9 @@ function openBookingFromNavigation(){
   if(adminPreviewMode){
     booking=newBooking('');
     stepIndex=0;
-    bookingCalendarIntroOpen=false;
+    const today=new Date(todayISO()+'T12:00:00');
+    bookingCalendarIntro={date:'',time:'',year:today.getFullYear(),month:today.getMonth()};
+    bookingCalendarIntroOpen=true;
     if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
     return;
   }
@@ -448,8 +450,10 @@ function renderBooking(){
     $('#stepLabel').textContent='Escolha data e horário';
     $('#stepDots').innerHTML='';
     $('#backBtn').classList.add('hidden');
-    $('#nextBtn').textContent='Continuar →';
+    $('#nextBtn').classList.remove('hidden');
+    $('#nextBtn').textContent=adminPreviewMode?'Ver etapas do agendamento →':'Continuar →';
     $('#bookingBody').innerHTML=renderCalendarIntro();
+    if(adminPreviewMode)$('#bookingBody').insertAdjacentHTML('afterbegin','<div class="availability-warning ok" role="status">Prévia administrativa: calendário demonstrativo. Continue para conferir o catálogo e as etapas, sem reservar horários.</div>');
     return;
   }
   if(bookingPhoneInputInstance){bookingPhoneInputInstance.destroy();bookingPhoneInputInstance=null;}
@@ -671,7 +675,12 @@ function validateStep(id){
 }
 async function nextBookingStep(){
   if(adminPreviewMode){
-    if(bookingCalendarIntroOpen)return openBookingFromNavigation();
+    if(bookingCalendarIntroOpen){
+      // O calendário inicial é apenas uma visualização. Não exige horário,
+      // não reserva vagas e não escreve dados de clientes no backend.
+      booking=newBooking('');stepIndex=0;bookingCalendarIntroOpen=false;
+      renderBooking();return;
+    }
     const previewSteps=steps(),previewStep=previewSteps[stepIndex];
     if(!previewStep||previewStep.id==='date'||previewStep.id==='client'||previewStep.id==='anamnesis'||previewStep.id==='consent'||previewStep.id==='final')
       return notify('A prévia termina no calendário. Nenhuma reserva será criada.','Visualização administrativa');
