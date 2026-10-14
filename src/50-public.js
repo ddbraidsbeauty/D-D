@@ -298,8 +298,37 @@ function renderHome(){
   const pros=activeProfessionals();
   $('#homeProTitle').textContent='Conheça nossa equipe';
   $('#homePros').innerHTML=pros.length?pros.map(p=>{const insta=String(p.instagram||'').trim();const href=insta?(insta.startsWith('http')?insta:`https://instagram.com/${insta.replace('@','')}`):'';return `<article class="pro ${p.image?'':'no-photo'}">${p.image?`<img src="${imageAttr(p.image)}" alt="${esc(p.name)}">`:`<div class="pro-placeholder"><span>D&D</span><b>${esc(p.name)}</b><small>Foto em breve</small></div>`}<div class="caption glass"><div><b>${esc(p.name)}</b>${insta?`<span>${esc(insta)}</span>`:''}</div>${href?`<a class="btn small" href="${esc(href)}" target="_blank" rel="noreferrer">Instagram</a>`:''}</div></article>`}).join(''):`<div class="empty-state">Nenhuma profissional disponível no momento.</div>`;
-  $('#featured').innerHTML=activeProcedures().filter(p=>p.special!=='maintenance').slice(0,6).map(publicCard).join('')||`<div class="empty-state">Nenhum procedimento cadastrado.</div>`;
+  $('#featured').innerHTML=activeProcedures().map(publicCard).join('')||`<div class="empty-state">Nenhum procedimento cadastrado.</div>`;
+  setupFeaturedCarousel();
   bindPublicCards();
+}
+
+
+function setupFeaturedCarousel(){
+  const track=$('#featured'),prev=$('#featuredPrev'),next=$('#featuredNext');
+  if(!track||!prev||!next)return;
+  const update=()=>{
+    const end=Math.max(0,track.scrollWidth-track.clientWidth);
+    prev.disabled=track.scrollLeft<=2;
+    next.disabled=track.scrollLeft>=end-2;
+    const visible=end>2;
+    prev.hidden=!visible;next.hidden=!visible;
+  };
+  const advance=dir=>{
+    const card=track.querySelector('.card');
+    if(!card)return;
+    const gap=parseFloat(getComputedStyle(track).columnGap)||16;
+    track.scrollBy({left:dir*(card.getBoundingClientRect().width+gap),behavior:window.matchMedia('(prefers-reduced-motion: reduce)').matches?'instant':'smooth'});
+  };
+  prev.onclick=()=>advance(-1);
+  next.onclick=()=>advance(1);
+  track.onscroll=update;
+  if(window.ResizeObserver){
+    if(window.__ddbFeaturedResizeObserver)window.__ddbFeaturedResizeObserver.disconnect();
+    window.__ddbFeaturedResizeObserver=new ResizeObserver(update);
+    window.__ddbFeaturedResizeObserver.observe(track);
+  }
+  requestAnimationFrame(update);
 }
 
 function publicCard(p){ return `<article class="card"><img src="${imageAttr(p.image)}" alt="${esc(p.name)}"><div class="cardbody"><small>${esc(p.category||'Procedimento')}</small><h3>${esc(p.name)}</h3><p class="muted">${Number(p.price)>0?'A partir de '+money(p.price):'Valor a definir pela profissional'}</p><button class="btn gold book-procedure" data-id="${esc(p.id)}">Escolher →</button></div></article>`; }

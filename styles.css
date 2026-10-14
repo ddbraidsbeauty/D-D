@@ -405,3 +405,17 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 .visual-choice-copy{min-height:66px;align-items:center;flex-wrap:wrap}
 .visual-choice strong{overflow-wrap:anywhere}
 @media(max-width:700px){.cards,.visual-choices{grid-template-columns:minmax(0,300px);justify-content:center}}
+
+/* Home: vitrine com deslocamento animado em desktop e gesto de arraste em telas touch. */
+.featured-heading{display:flex;align-items:center;justify-content:space-between;gap:18px}
+.featured-heading h2{margin-bottom:20px}
+.featured-arrows{display:flex;gap:10px;align-items:center}
+.featured-arrow{font-size:29px;line-height:1;width:48px;height:48px;display:grid;place-items:center;padding:0}
+.featured-arrow:disabled{opacity:.35;cursor:default}
+.featured-arrow[hidden]{display:none}
+#featured.featured-track{display:flex;flex-wrap:nowrap;align-items:stretch;gap:clamp(14px,2vw,22px);overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;scroll-behavior:smooth;overscroll-behavior-x:contain;scrollbar-width:none;-webkit-overflow-scrolling:touch;padding:2px 1px 12px;justify-content:flex-start}
+#featured.featured-track::-webkit-scrollbar{display:none}
+#featured.featured-track>.card{flex:0 0 clamp(230px,27vw,300px);scroll-snap-align:start;min-width:0}
+#featured.featured-track>.empty-state{flex:1 1 auto}
+@media(max-width:700px){#featured.featured-track>.card{flex-basis:min(78vw,300px)}.featured-arrows{display:none}}
+@media(prefers-reduced-motion:reduce){#featured.featured-track{scroll-behavior:auto}}
