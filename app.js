@@ -1189,7 +1189,24 @@ function renderModule(){
   const map={overview:renderOverview,requests:renderRequests,bookings:renderBookings,clients:renderClients,catalog:renderCatalogAdmin,finance:renderFinance,professionals:renderProfessionals,posts:renderPosts,history:renderHistory,settings:renderSettings,workflows:()=>'<div id="rc7Admin"></div>'};
   $('#moduleBody').innerHTML=map[currentModule]?.()||'';
   bindModule(currentModule);
-  if(currentModule==='workflows')window.DDBraidsRC7?.renderAdmin(getState(),requireSensitiveOperator,async(refreshPublic=false)=>{await syncAdminSnapshot();if(refreshPublic)await bootstrapBackendPublic();renderModule();});
+  if(currentModule==='workflows'){
+    // Cancellation/refund tasks can change from the customer's portal.
+    // Refresh the admin snapshot when opening Pending items, without requiring a reload.
+    const root=$('#rc7Admin');
+    if(root)root.innerHTML='<section class="glass panel">Atualizando cancelamentos e pendências…</section>';
+    syncAdminSnapshot().then(()=>{
+      if(currentModule!=='workflows'||$('#rc7Admin')!==root)return;
+      renderAdminNav();
+      window.DDBraidsRC7?.renderAdmin(getState(),requireSensitiveOperator,async(refreshPublic=false)=>{
+        await syncAdminSnapshot();
+        if(refreshPublic)await bootstrapBackendPublic();
+        renderModule();
+      });
+    }).catch(e=>{
+      console.error('Não foi possível atualizar as pendências:',e);
+      if(root)root.innerHTML='<section class="glass panel"><h2>Não foi possível atualizar as pendências</h2><p class="muted">Tente novamente em instantes.</p></section>';
+    });
+  }
 }
 
 function metrics(){
