@@ -27,6 +27,7 @@ function initAdmin(){
 
 function showPublic(preview=false){
   adminPreviewMode=!!preview&&sessionStorage.getItem('ddbraids_admin_session')==='1';
+  if(adminPreviewMode){booking=newBooking('');stepIndex=0;bookingCalendarIntroOpen=false;}
   $('#adminRoot').classList.add('hidden');
   $('#publicRoot').classList.remove('hidden');
   $('#publicRoot').classList.toggle('admin-preview',adminPreviewMode);
@@ -523,4 +524,3 @@ function bindSettings(){
  $('[data-save-general]').onclick=async()=>{try{const hours=Number($('#cancelHours').value||24),text=$('#consentStandardText').value.trim(),version=$('#consentVersion').value.trim()||'1.0';await DDB.saveSetting('cancellation_hours',hours);await DDB.saveSetting('consent_standard_version',version);await DDB.saveSetting('consent_standard_text',text);getState().settings.cancelHours=hours;getState().settings.consentStandardText=text;getState().settings.consentVersion=version;saveState();notify(text?'Regras salvas.':'Regras salvas. O agendamento público ficará bloqueado até configurar o texto do consentimento.');}catch(e){notify(e.message||'Não foi possível salvar as regras.');}};
  $('[data-save-messages]').onclick=async()=>{const map={fee:'deposit_charge',confirm:'confirmation',cancel:'cancellation',reschedule:'reschedule',reminder:'reminder',opening:'open_slot',nonRecommended:'not_recommended',refundCompleted:'refund_completed'};try{for(const x of $$('[data-message]')){await DDB.saveWhatsappTemplate(map[x.dataset.message],x.value);getState().settings.messages[x.dataset.message]=x.value;}saveState();notify('Mensagens salvas.');}catch(e){notify(e.message||'Não foi possível salvar as mensagens.');}};
 }
-
