@@ -52,17 +52,49 @@ function renderAdmin(state,withPin,onRefresh){
   const wBy=new Map((d.waitlist||[]).map(w=>[w.id,w]));
   const offerBy=new Map((d.offers||[]).filter(o=>o.status==='accepted_pending_admin').map(o=>[o.waitlist_id,o]));
   const waiting=(d.waitlist||[]).filter(w=>['waiting','offer_pending','accepted_pending_admin'].includes(w.status));
-  const pendingRefunds=(d.refunds||[]).filter(r=>r.destination==='pix'&&r.status==='pending');
-  root.innerHTML=`<div class="rc7-admin-grid"><section class="glass panel rc7-admin-panel"><div class="between"><h2>Lista de espera</h2><b>${waiting.length}</b></div><p class="muted">Ordene por antiguidade ou confira quem cabe em uma vaga. A duração vem do agendamento original.</p><label>Adicionar atendimento afetado por imprevisto<select id="rc7QueueAppointment"><option value="">Escolha um atendimento</option>${appointments.filter(a=>a.status==='confirmed'&&!waiting.some(w=>w.appointment_id===a.id)).map(a=>`<option value="${esc(a.id)}">${esc(a.clientName)} • ${esc(a.serviceName||'Atendimento')}</option>`).join('')}</select></label><button type="button" class="btn" id="rc7QueueBtn">Adicionar à espera</button><div class="form-grid"><label>Tempo livre (minutos)<input type="number" min="0" step="15" id="rc7Minutes" placeholder="Ex.: 180"></label><label>Ordenar<select id="rc7Order"><option value="oldest">Mais tempo aguardando</option><option value="shortest">Procedimento mais curto</option><option value="longest">Procedimento mais longo</option></select></label></div><div id="rc7WaitRows"></div></section>
-   <section class="glass panel rc7-admin-panel"><h2>Devoluções via Pix</h2><p class="muted">Realize o Pix manualmente antes de marcar como concluído.</p>${pendingRefunds.map(r=>{const a=apptBy.get(r.appointment_id);return `<div class="rc7-refund-row"><b>${esc(a?.clientName||'Cliente')} • ${money(r.amount)}</b><p>Chave Pix (${esc(r.pix_type)}): <code>${esc(r.pix_key)}</code></p><button class="btn gold" data-refund-done="${esc(r.id)}">Já transferi — concluir</button></div>`;}).join('')||'<p class="muted">Nenhum Pix pendente.</p>'}</section>
-   <section class="glass panel rc7-admin-panel"><h2>Valores dos materiais</h2><p class="muted">Preços de desconto definidos pelas profissionais por cor/tamanho/pacote.</p><label>Profissional<select id="rc7PricePro">${(state.professionals||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label><div id="rc7PriceRows"></div></section></div>`;
+  const refundRequests=d.refunds||[];
+  const refundByAppointment=new Map(refundRequests.map(r=>[r.appointment_id,r]));
+  // A cancellation can have an unpaid operational refund task BEFORE
+  // the customer chooses Pix or credit. It must not vanish from admin.
+  const awaitingDestination=appointments.filter(a=>a.status==='cancelled'
+    &&a.refundStatus==='pending'
+    &&Number(a.bookingFeeAmount||0)>0
+    &&!refundByAppointment.has(a.id));
+  const pendingRefunds=refundRequests.filter(r=>r.destination==='pix'&&r.status==='pending');
+  const otherRefunds=refundRequests.filter(r=>!(r.destination==='pix'&&r.status==='pending'));
+  const refundAppointmentName=r=>apptBy.get(r.appointment_id)?.clientName||'Cliente';
+  const refundAppointmentService=r=>apptBy.get(r.appointment_id)?.serviceName||'Atendimento';
+  root.innerHTML=`<div class="rc7-admin-grid">
+    <section class="glass panel rc7-admin-panel">
+      <div class="between"><h2>Lista de espera</h2><b class="rc7-section-count">${waiting.length}</b></div>
+      <p class="muted">Ordene por antiguidade ou confira quem cabe em uma vaga. A duração vem do agendamento original.</p>
+      <label>Adicionar atendimento afetado por imprevisto<select id="rc7QueueAppointment"><option value="">Escolha um atendimento</option>${appointments.filter(a=>a.status==='confirmed'&&!waiting.some(w=>w.appointment_id===a.id)).map(a=>`<option value="${esc(a.id)}">${esc(a.clientName)} • ${esc(a.serviceName||'Atendimento')}</option>`).join('')}</select></label>
+      <button type="button" class="btn" id="rc7QueueBtn">Adicionar à espera</button>
+      <div class="form-grid"><label>Tempo livre (minutos)<input type="number" min="0" step="15" id="rc7Minutes" placeholder="Ex.: 180"></label><label>Ordenar<select id="rc7Order"><option value="oldest">Mais tempo aguardando</option><option value="shortest">Procedimento mais curto</option><option value="longest">Procedimento mais longo</option></select></label></div>
+      <div id="rc7WaitRows"></div>
+    </section>
+    <section class="glass panel rc7-admin-panel">
+      <div class="between"><h2>Devoluções via Pix</h2><b class="rc7-section-count">${awaitingDestination.length+pendingRefunds.length}</b></div>
+      <p class="muted">Acompanhe os sinais de atendimentos cancelados. A cliente deve escolher Pix ou crédito antes que uma devolução seja processada.</p>
+      ${awaitingDestination.length?`<h3>Cancelamentos aguardando escolha</h3>${awaitingDestination.map(a=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(a.clientName||'Cliente')}</b><p class="muted">${esc(a.serviceName||'Atendimento')} • ${esc(a.date||'Data não informada')}</p></div><strong>${money(a.bookingFeeAmount)}</strong></div><p class="rc7-pending-status">Aguardando a cliente escolher: Pix ou crédito</p></div>`).join('')}`:`<p class="muted">Nenhum cancelamento aguardando escolha do destino do sinal.</p>`}
+      <h3>Pix aguardando transferência</h3>
+      ${pendingRefunds.map(r=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(refundAppointmentName(r))}</b><p class="muted">${esc(refundAppointmentService(r))} • Chave Pix (${esc(r.pix_type||'—')})</p></div><strong>${money(r.amount)}</strong></div><p class="rc7-pix-key"><code>${esc(r.pix_key||'Chave não informada')}</code></p><button type="button" class="btn gold" data-refund-done="${esc(r.id)}">Já transferi — concluir</button></div>`).join('')||'<p class="muted">Nenhum Pix aguardando transferência.</p>'}
+      ${otherRefunds.length?`<h3>Outros destinos e histórico</h3>${otherRefunds.map(r=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(refundAppointmentName(r))}</b><p class="muted">${esc(refundAppointmentService(r))} • ${r.destination==='credit'?'Crédito':'Pix'} • ${esc(r.status||'Registrado')}</p></div><strong>${money(r.amount)}</strong></div></div>`).join('')}`:''}
+    </section>
+    <section class="glass panel rc7-admin-panel">
+      <h2>Valores dos materiais</h2>
+      <p class="muted">Valor interno de desconto por pacote/variação e por profissional. Não é preço do procedimento nem cobrança automática à cliente.</p>
+      <label>Profissional<select id="rc7PricePro">${(state.professionals||[]).map(p=>`<option value="${esc(p.id)}">${esc(p.name)}</option>`).join('')}</select></label>
+      <div id="rc7PriceRows"></div>
+    </section>
+  </div>`;
   // Módulos de RC7 ainda não migrados não devem exibir botões que inevitavelmente falharão.
   const adminSections=[...root.querySelectorAll('.rc7-admin-grid > section')];
   const waitlistReady=!!d.available?.waitlist && !!d.available?.offers;
   const refundReady=!!d.available?.refunds;
   const materialPricesReady=!!state.materialPricesReady;
   if(!waitlistReady && adminSections[0])adminSections[0].innerHTML='<h2>Lista de espera</h2><p class="muted">A lista de espera e as propostas de horário ainda precisam ser ativadas no Supabase. Nenhum agendamento foi alterado.</p>';
-  if(!refundReady && adminSections[1])adminSections[1].innerHTML='<h2>Devoluções por Pix</h2><p class="muted">Consulta de reembolsos indisponível no momento. Nenhuma transferência foi registrada.</p>';
+  if(!refundReady && adminSections[1])adminSections[1].insertAdjacentHTML('beforeend','<p class="muted">Não foi possível consultar pedidos de Pix/crédito no momento. A lista acima exibe apenas cancelamentos conhecidos pelo sistema; atualize para conferir novas solicitações.</p>');
   if(!materialPricesReady && adminSections[2])adminSections[2].innerHTML='<h2>Valores dos materiais</h2><p class="muted">O cadastro de preços por profissional ainda não foi ativado no Supabase.</p>';
   if(waitlistReady){
   function drawWaiting(){const mins=$('#rc7Minutes',root).value,sort=$('#rc7Order',root).value;const entries=waiting.map(w=>{const a=apptBy.get(w.appointment_id);return {...w,duration_minutes:a?.durationMinutes||0,clientName:a?.clientName||'',procedureName:a?.serviceName||a?.procedureId||'Atendimento'};});
@@ -75,7 +107,7 @@ function renderAdmin(state,withPin,onRefresh){
   $('#rc7Minutes',root).oninput=drawWaiting;$('#rc7Order',root).onchange=drawWaiting;drawWaiting();
   } // waitlistReady
   if(materialPricesReady && $('#rc7PricePro',root)?.value){
-  function drawPrices(){const pro=$('#rc7PricePro',root).value;const by=new Map((state.materialPrices||[]).filter(p=>p.professional_id===pro).map(p=>[p.material_variant_id,p.discount_unit_amount]));$('#rc7PriceRows',root).innerHTML=(state.materials||[]).flatMap(m=>(m.variants||[]).map(v=>`<div class="rc7-price-row"><label>${esc(m.name)} • ${esc([v.color,v.size].filter(Boolean).join(' • ')||'Padrão')}<input type="number" min="0" step="0.01" data-price-variant="${esc(v.id)}" value="${by.has(v.id)?esc(by.get(v.id)):''}" placeholder="Preço por pacote"></label><button class="btn" data-save-price="${esc(v.id)}">Salvar</button></div>`)).join('')||'<p class="muted">Nenhum material cadastrado.</p>';
+  function drawPrices(){const pro=$('#rc7PricePro',root).value;const by=new Map((state.materialPrices||[]).filter(p=>p.professional_id===pro).map(p=>[p.material_variant_id,p.discount_unit_amount]));$('#rc7PriceRows',root).innerHTML=(state.materials||[]).flatMap(m=>(m.variants||[]).map(v=>`<div class="rc7-price-row"><label>${esc(m.name)} • ${esc([v.color,v.size].filter(Boolean).join(' • ')||'Padrão')}<input type="number" min="0" step="0.01" data-price-variant="${esc(v.id)}" value="${by.has(v.id)?esc(by.get(v.id)):''}" placeholder="Desconto interno por pacote (R$)"></label><button class="btn" data-save-price="${esc(v.id)}">Salvar</button></div>`)).join('')||'<p class="muted">Nenhum material cadastrado. Cadastre materiais e suas variações em Catálogo → Materiais para configurar os valores internos de cada profissional.</p>';
   $$('[data-save-price]',root).forEach(b=>b.onclick=async()=>{const input=$(`[data-price-variant="${b.dataset.savePrice}"]`,root);if(!input.value.trim()||Number(input.value)<0)return alert('Informe o preço por pacote.');b.disabled=true;try{await DDB.saveMaterialPrice(pro,b.dataset.savePrice,Number(input.value));await onRefresh(true);alert('Preço registrado.');}catch(e){alert(message(e));}finally{b.disabled=false;}});
   }
   $('#rc7PricePro',root).onchange=drawPrices;drawPrices();
