@@ -36,6 +36,7 @@ function showPublic(preview=false){
 }
 function showAdmin(){
   if(sessionStorage.getItem('ddbraids_admin_session')!=='1'){location.hash='#account';return;}
+  if(adminPreviewMode){booking=newBooking();stepIndex=0;bookingCalendarIntroOpen=false;}
   adminPreviewMode=false;
   $('#adminPreviewBanner').classList.add('hidden');
   $('#publicRoot').classList.remove('admin-preview');
