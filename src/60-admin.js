@@ -3,21 +3,62 @@ const modules = [
   ['overview','⌂','Visão geral'],['requests','◷','Solicitações'],['bookings','▣','Agendamentos'],['workflows','⇄','Pendências'],['clients','♙','Clientes'],['catalog','✂','Catálogo'],['finance','$','Financeiro'],['professionals','♛','Profissionais'],['posts','▧','Criador de Posts'],['history','↺','Histórico'],['settings','⚙','Configurações']
 ];
 let currentModule='overview';
+let adminPreviewMode=false;
 let agendaMonth=new Date().getMonth(), agendaYear=new Date().getFullYear(), agendaDate=todayISO(), agendaPro='all';
 let financeMonth=new Date().getMonth(), financeYear=new Date().getFullYear(), financeDate=todayISO(), financeMode='cashflow', financePro='all', financeFrom='', financeTo='';
 
 function initAdmin(){
   renderAdminNav();
-  $('#logoutAdmin').onclick=async()=>{sessionStorage.removeItem('ddbraids_admin_session');try{await DDB.signOut();}catch{}showPublic();};
-  $('#viewPublic').onclick=()=>showPublic();
+  $('#logoutAdmin').onclick=async()=>{
+    try{
+      await DDB.signOut();
+      sessionStorage.removeItem('ddbraids_admin_session');
+      showPublic(false);
+    }catch(e){notify('Não foi possível encerrar a sessão administrativa. Tente novamente.','Sessão');}
+  };
+  $('#viewPublic').onclick=()=>showPublic(true);
+  $('#returnAdminPreview').onclick=()=>showAdmin();
   $('#toggleSidebar').onclick=()=>$('#adminRoot').classList.toggle('sidebar-collapsed');
   $('#adminMenu').onclick=()=>$('#adminSidebar').classList.toggle('mobile-open');
-  window.addEventListener('hashchange',()=>{ if(location.hash==='#admin'&&sessionStorage.getItem('ddbraids_admin_session')) showAdmin(); });
-  if(location.hash==='#admin'&&sessionStorage.getItem('ddbraids_admin_session')) showAdmin();
+  window.addEventListener('hashchange',()=>{
+    if(location.hash==='#admin'&&sessionStorage.getItem('ddbraids_admin_session'))showAdmin();
+  });
 }
 
-function showPublic(){ $('#adminRoot').classList.add('hidden');$('#publicRoot').classList.remove('hidden'); if(location.hash.startsWith('#admin'))location.hash='#home'; }
-function showAdmin(){ if(!sessionStorage.getItem('ddbraids_admin_session')){location.hash='#account';return;} $('#publicRoot').classList.add('hidden');$('#adminRoot').classList.remove('hidden');location.hash='#admin'; openModule(currentModule); }
+function showPublic(preview=false){
+  adminPreviewMode=!!preview&&sessionStorage.getItem('ddbraids_admin_session')==='1';
+  $('#adminRoot').classList.add('hidden');
+  $('#publicRoot').classList.remove('hidden');
+  $('#publicRoot').classList.toggle('admin-preview',adminPreviewMode);
+  $('#adminPreviewBanner').classList.toggle('hidden',!adminPreviewMode);
+  if(location.hash.startsWith('#admin'))location.hash='#home';
+  else renderPublicRoute();
+}
+function showAdmin(){
+  if(sessionStorage.getItem('ddbraids_admin_session')!=='1'){location.hash='#account';return;}
+  adminPreviewMode=false;
+  $('#adminPreviewBanner').classList.add('hidden');
+  $('#publicRoot').classList.remove('admin-preview');
+  $('#publicRoot').classList.add('hidden');
+  $('#adminRoot').classList.remove('hidden');
+  location.hash='#admin';
+  openModule(currentModule);
+}
+async function restoreAdminSessionOnLoad(){
+  // Never use sessionStorage alone as proof of admin access.
+  // Respect password reset and auth callbacks, which have a separate lifecycle.
+  if(passwordRecoveryActive||routeHash()==='reset-password'||routeHash()==='special-consent'||hasAuthCallback())return;
+  try{
+    const session=await DDB.session();
+    if(!session?.user){sessionStorage.removeItem('ddbraids_admin_session');return;}
+    if(!await DDB.isAdmin()){sessionStorage.removeItem('ddbraids_admin_session');return;}
+    sessionStorage.setItem('ddbraids_admin_session','1');
+    await syncAdminSnapshot();
+    showAdmin();
+  }catch(error){
+    console.error('Não foi possível restaurar a sessão administrativa:',error);
+  }
+}
 
 function pendingCounts(){
   const db=getState(), tasks=(db.operationalTasks||[]).filter(t=>!t.resolvedAt);
@@ -174,7 +215,7 @@ function renderPosts(){return `<div class="post-creator-layout"><section class="
 
 function renderHistory(){const db=getState();return `<div class="glass admin-list"><div class="between"><div><h2>Histórico de alterações</h2><p class="muted">Quem alterou, o que alterou e quando.</p></div><input id="historySearch" class="field compact-search" placeholder="Buscar"></div><div id="historyRows">${db.audits.map(x=>`<div class="row history-row" data-search="${esc((x.actor+' '+x.area+' '+x.action).toLowerCase())}"><div><b>${esc(x.actor)} — ${esc(x.action)}</b><span>${esc(x.area)} • ${new Date(x.at).toLocaleString('pt-BR')}</span></div></div>`).join('')||`<p class="empty-state">Nenhuma alteração registrada.</p>`}</div></div>`;}
 
-function renderSettings(){const db=getState(),m=db.settings.messages;const sundays=db.settings.publicSundays||[];return `<div class="settings-grid"><section class="glass admin-list form"><h2>Regras gerais</h2><label>Cancelamento permitido até quantas horas antes<input id="cancelHours" type="number" min="0" value="${db.settings.cancelHours}"></label><label>Versão do consentimento padrão<input id="consentVersion" value="${esc(db.settings.consentVersion||'1.0')}"></label><label>Texto do consentimento padrão<textarea id="consentStandardText" placeholder="Configure o texto apresentado à cliente antes do envio da solicitação.">${esc(db.settings.consentStandardText||'')}</textarea></label>${(()=>{const mt=db.procedures.find(p=>p.special==='maintenance');return mt?`<fieldset><legend>Sinal da manutenção</legend><label class="toggle-option"><input id="maintenanceDepositInherit" type="checkbox" ${mt.fee?.inherit?'checked':''}><span>Herdar a regra de sinal do procedimento original</span></label><label>Regra própria<select id="maintenanceDepositMode"><option value="none" ${mt.fee?.type==='none'?'selected':''}>Sem sinal</option><option value="fixed" ${mt.fee?.type==='fixed'?'selected':''}>Valor fixo</option><option value="percent" ${mt.fee?.type==='percent'?'selected':''}>Percentual</option></select></label><label>Valor<input id="maintenanceDepositValue" type="number" min="0" step="0.01" value="${Number(mt.fee?.value||0)}"></label><button class="btn" type="button" data-save-maintenance-deposit>Salvar regra da manutenção</button></fieldset>`:'';})()}<div class="sunday-picker"><h3>Domingos abertos ao público</h3><p class="muted">Cadastre somente os domingos específicos em que as profissionais aceitarão solicitações públicas.</p><div class="actions"><input id="publicSundayDate" type="date"><button class="btn" type="button" data-add-sunday>Adicionar domingo</button></div><div class="sunday-list">${sundays.sort().map(d=>`<span class="sunday-chip">${fmtDate(d)} <button type="button" data-remove-sunday="${d}" aria-label="Remover">×</button></span>`).join('')||'<span class="muted">Nenhum domingo aberto.</span>'}</div></div><button class="btn gold" data-save-general>Salvar regras</button><h2>Imagem principal</h2>${uploadField('heroUpload','Imagem de destaque',db.media.hero||'')}<button class="btn gold" data-save-hero>Salvar imagem</button></section><section class="glass admin-list form"><h2>Mensagens de WhatsApp</h2>${Object.entries({fee:'Cobrança do sinal',confirm:'Confirmação',cancel:'Cancelamento',reschedule:'Remarcação',reminder:'Lembrete',opening:'Oferta de vaga',nonRecommended:'Não recomendação',refundCompleted:'Reembolso concluído'}).map(([k,l])=>`<label>${l}<textarea data-message="${k}">${esc(m[k]||'')}</textarea></label>`).join('')}<button class="btn gold" data-save-messages>Salvar mensagens</button></section></div>`;}
+function renderSettings(){const db=getState(),m=db.settings.messages;const sundays=db.settings.publicSundays||[];return `<div class="settings-grid"><section class="glass admin-list form"><h2>Segurança da conta</h2><p class="muted">Para trocar a senha do painel, confirme sua senha atual e escolha uma nova.</p><button class="btn" type="button" id="changeAdminPassword">Alterar minha senha</button><hr><h2>Regras gerais</h2><label>Cancelamento permitido até quantas horas antes<input id="cancelHours" type="number" min="0" value="${db.settings.cancelHours}"></label><label>Versão do consentimento padrão<input id="consentVersion" value="${esc(db.settings.consentVersion||'1.0')}"></label><label>Texto do consentimento padrão<textarea id="consentStandardText" placeholder="Configure o texto apresentado à cliente antes do envio da solicitação.">${esc(db.settings.consentStandardText||'')}</textarea></label>${(()=>{const mt=db.procedures.find(p=>p.special==='maintenance');return mt?`<fieldset><legend>Sinal da manutenção</legend><label class="toggle-option"><input id="maintenanceDepositInherit" type="checkbox" ${mt.fee?.inherit?'checked':''}><span>Herdar a regra de sinal do procedimento original</span></label><label>Regra própria<select id="maintenanceDepositMode"><option value="none" ${mt.fee?.type==='none'?'selected':''}>Sem sinal</option><option value="fixed" ${mt.fee?.type==='fixed'?'selected':''}>Valor fixo</option><option value="percent" ${mt.fee?.type==='percent'?'selected':''}>Percentual</option></select></label><label>Valor<input id="maintenanceDepositValue" type="number" min="0" step="0.01" value="${Number(mt.fee?.value||0)}"></label><button class="btn" type="button" data-save-maintenance-deposit>Salvar regra da manutenção</button></fieldset>`:'';})()}<div class="sunday-picker"><h3>Domingos abertos ao público</h3><p class="muted">Cadastre somente os domingos específicos em que as profissionais aceitarão solicitações públicas.</p><div class="actions"><input id="publicSundayDate" type="date"><button class="btn" type="button" data-add-sunday>Adicionar domingo</button></div><div class="sunday-list">${sundays.sort().map(d=>`<span class="sunday-chip">${fmtDate(d)} <button type="button" data-remove-sunday="${d}" aria-label="Remover">×</button></span>`).join('')||'<span class="muted">Nenhum domingo aberto.</span>'}</div></div><button class="btn gold" data-save-general>Salvar regras</button><h2>Imagem principal</h2>${uploadField('heroUpload','Imagem de destaque',db.media.hero||'')}<button class="btn gold" data-save-hero>Salvar imagem</button></section><section class="glass admin-list form"><h2>Mensagens de WhatsApp</h2>${Object.entries({fee:'Cobrança do sinal',confirm:'Confirmação',cancel:'Cancelamento',reschedule:'Remarcação',reminder:'Lembrete',opening:'Oferta de vaga',nonRecommended:'Não recomendação',refundCompleted:'Reembolso concluído'}).map(([k,l])=>`<label>${l}<textarea data-message="${k}">${esc(m[k]||'')}</textarea></label>`).join('')}<button class="btn gold" data-save-messages>Salvar mensagens</button></section></div>`;}
 function bindModule(id){
   $$('[data-go]').forEach(b=>b.onclick=()=>openModule(b.dataset.go));
   $$('[data-pay]').forEach(b=>b.onclick=()=>openPayment(b.dataset.pay));
@@ -456,6 +497,7 @@ function drawPost(){const c=$('#postCanvas');if(!c)return;const fmt=$('#postForm
 function exportPost(){if(!postState.img1)return notify('Envie uma foto antes de exportar.');if($('#postTemplate').value==='beforeafter'&&!postState.img2)return notify('Envie a foto do depois.');const a=document.createElement('a');a.download='dd-braids-post.png';a.href=$('#postCanvas').toDataURL('image/png');a.click();}
 
 function bindSettings(){
+ $('#changeAdminPassword')?.addEventListener('click',openChangePassword);
  let hero=getState().media.hero||'';bindUpload('heroUpload',()=>hero,v=>hero=v);
  $('[data-save-hero]').onclick=async()=>{try{const path=await adminAsset(hero,'brand');await DDB.saveSetting('hero_image_path',path||'');getState().media.hero=assetUrl(path);saveState();notify('Imagem principal salva.');}catch(e){notify(e.message||'Não foi possível salvar a imagem.');}};
  $('[data-add-sunday]')?.addEventListener('click',async()=>{const value=$('#publicSundayDate')?.value;if(!value)return notify('Escolha uma data.');if(new Date(`${value}T12:00:00`).getDay()!==0)return notify('A data escolhida não é domingo.');try{await DDB.setPublicSunday(value,true,null);await bootstrapBackendPublic();renderModule();}catch(e){notify(e.message||'Não foi possível abrir o domingo.');}});
