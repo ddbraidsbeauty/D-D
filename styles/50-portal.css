@@ -66,3 +66,23 @@
 .password-form .auth-signup-feedback{margin-top:10px;}
 @media(max-width:700px){.hair-grid{grid-template-columns:repeat(2,minmax(0,1fr));gap:9px}.hair-choice-label{min-height:64px;gap:4px}.hair-choice-label strong{font-size:18px}.hair-choice-label span{font-size:11px}}
 @media(max-width:370px){.hair-choice-label{display:grid;}.hair-grid{gap:7px}}
+
+/* Pendências usa painéis de largura completa, seguindo a hierarquia do Financeiro. */
+.rc7-admin-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:16px;align-items:stretch}
+.rc7-admin-grid .rc7-admin-panel{width:100%;min-width:0}
+.rc7-section-count{min-width:30px;height:30px;border-radius:50%;display:inline-flex;align-items:center;justify-content:center;background:var(--gold2);color:#271a06;font-size:13px}
+.rc7-admin-panel h3{margin:23px 0 9px;font-size:17px}
+.rc7-pending-item{padding:15px 0}
+.rc7-pending-item-main{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap}
+.rc7-pending-item-main b{font-weight:700}
+.rc7-pending-item-main strong{font-size:18px;white-space:nowrap}
+.rc7-pending-item-main p{margin:4px 0 0}
+.rc7-pending-status{display:inline-block;margin:11px 0 0;color:var(--gold2);font-size:13px}
+.rc7-pix-key{margin:7px 0 14px;overflow-wrap:anywhere}
+.rc7-admin-panel #rc7PriceRows{display:grid;gap:0}
+@media(max-width:700px){
+ .rc7-admin-grid{gap:12px}
+ .rc7-pending-item-main{align-items:flex-start}
+ .rc7-pending-item-main strong{font-size:16px}
+ .rc7-admin-panel h3{font-size:16px}
+}
