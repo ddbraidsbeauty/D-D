@@ -504,6 +504,41 @@ function renderStep(id){
   return '';
 }
 
+// Calendário introdutório: exibe janelas previstas, nunca vagas confirmadas.
+function calendarIntroSlots(date){
+  if(!date)return [];
+  const times=new Set();
+  const nowBR=new Intl.DateTimeFormat('en-GB',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit',hour12:false}).format(new Date());
+  for(const pro of activeProfessionals()){
+    if(!publicPeriodsFor(pro.id,date).length||dateBlocked(pro.id,date,false,null,{publicCheck:true}))continue;
+    const av=availabilityFor(pro.id);
+    for(let minute=toMinutes(av.start);minute+30<=toMinutes(av.end);minute+=30){
+      if(date===todayISO()&&minute<=toMinutes(nowBR))continue;
+      times.add(fromMinutes(minute));
+    }
+  }
+  return [...times].sort();
+}
+function renderCalendarIntro(){
+  const c=bookingCalendarIntro, today=new Date(todayISO()+'T12:00:00');
+  const year=Number(c.year??today.getFullYear()),month=Number(c.month??today.getMonth());
+  const first=new Date(year,month,1),days=new Date(year,month+1,0).getDate(),offset=(first.getDay()+6)%7;
+  const cells=[];
+  for(let i=0;i<offset;i++)cells.push('<span class="day empty"></span>');
+  for(let day=1;day<=days;day++){
+    const iso=`${year}-${String(month+1).padStart(2,'0')}-${String(day).padStart(2,'0')}`;
+    const possible=iso>=todayISO()&&activeProfessionals().some(p=>publicPeriodsFor(p.id,iso).length&&!dateBlocked(p.id,iso,false,null,{publicCheck:true}));
+    cells.push(`<button type="button" class="day agenda-state ${possible?'available':'off'} ${c.date===iso?'selected':''}" data-intro-date="${iso}" ${possible?'':'disabled'}>${day}</button>`);
+  }
+  const times=calendarIntroSlots(c.date);
+  if(c.time&&!times.includes(c.time))c.time='';
+  return `<div class="selection-context"><b>Quando você gostaria de vir?</b><span>Escolha uma data e um horário de preferência. A disponibilidade será conferida após selecionar a profissional e o procedimento.</span></div>
+    <div class="calendar-shell"><div class="calendar-head"><button type="button" class="btn" data-intro-cal="prev">‹</button><h2>${new Date(year,month,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><button type="button" class="btn" data-intro-cal="next">›</button></div>
+    <div class="weekday"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div><div class="calgrid">${cells.join('')}</div></div>
+    <fieldset><legend>Horário de preferência *</legend><div class="chips">${c.date?(times.length?['Manhã','Tarde','Noite'].map(period=>{const group=times.filter(t=>slotPeriod(t)===period);return group.length?`<div class="slot-period"><b>${period}</b><div class="chips">${group.map(t=>`<button type="button" class="chip ${c.time===t?'on':''}" data-intro-slot="${t}">${t}</button>`).join('')}</div></div>`:''}).join(''):'<span class="muted">Nenhum horário previsto para esse dia. Escolha outra data.</span>'):'<span class="muted">Selecione um dia para consultar as faixas de horário.</span>'}</div></fieldset>
+    <p class="muted">Esta é uma preferência inicial, não uma reserva. Alguns horários podem estar ocupados ou não comportar a duração do procedimento escolhido.</p>`;
+}
+
 function renderDateStep(){
   const now=new Date(), year=Number(booking.calendarYear||now.getFullYear()), month=Number(booking.calendarMonth??now.getMonth());
   booking.calendarYear=year; booking.calendarMonth=month;
@@ -532,20 +567,26 @@ function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType
 
 function handleBookingClick(e){
   const t=e.target.closest('button,[data-accessory]'); if(!t) return;
+  if(bookingCalendarIntroOpen){
+    if(t.dataset.introDate!==undefined){bookingCalendarIntro.date=t.dataset.introDate;bookingCalendarIntro.time='';renderBooking();return;}
+    if(t.dataset.introSlot!==undefined){bookingCalendarIntro.time=t.dataset.introSlot;renderBooking();return;}
+    if(t.dataset.introCal){const d=new Date(bookingCalendarIntro.year,bookingCalendarIntro.month+(t.dataset.introCal==='next'?1:-1),1);bookingCalendarIntro.year=d.getFullYear();bookingCalendarIntro.month=d.getMonth();renderBooking();return;}
+    return;
+  }
   if(t.hasAttribute('data-client-edit')){clientContactEditing=true;renderBooking();return;}
   if(t.dataset.accessory!==undefined){ const id=t.dataset.accessory; booking.accessoryIds=booking.accessoryIds.includes(id)?booking.accessoryIds.filter(x=>x!==id):[...booking.accessoryIds,id]; renderBooking(); return; }
-  if(t.dataset.procedure!==undefined){ booking=newBooking(t.dataset.procedure); stepIndex=0; renderBooking(); return; }
-  if(t.dataset.maintTarget!==undefined){ booking.maintenanceTargetId=t.dataset.maintTarget; booking.methodId='';booking.variationId='';booking.materialChoices={};booking.date='';booking.time='';renderBooking();return; }
-  if(t.dataset.method!==undefined){ booking.methodId=t.dataset.method;booking.variationId='';booking.size='';booking.thickness='';booking.tags=[];booking.materialChoices={};booking.date='';booking.time='';renderBooking();return; }
-  if(t.dataset.variation!==undefined){ booking.variationId=t.dataset.variation;booking.size='';booking.thickness='';booking.tags=[];booking.materialChoices={};booking.date='';booking.time='';renderBooking();return; }
+  if(t.dataset.procedure!==undefined){const old=booking;booking=newBooking(t.dataset.procedure);if(old.calendarPrefillSource==='calendar'){booking.date=old.date;booking.time=old.time;booking.period=old.period;booking.calendarPrefillSource='calendar';}stepIndex=0;renderBooking();return; }
+  if(t.dataset.maintTarget!==undefined){ booking.maintenanceTargetId=t.dataset.maintTarget; booking.methodId='';booking.variationId='';booking.materialChoices={};invalidateBookingCalendarSelection();renderBooking();return; }
+  if(t.dataset.method!==undefined){ booking.methodId=t.dataset.method;booking.variationId='';booking.size='';booking.thickness='';booking.tags=[];booking.materialChoices={};invalidateBookingCalendarSelection();renderBooking();return; }
+  if(t.dataset.variation!==undefined){ booking.variationId=t.dataset.variation;booking.size='';booking.thickness='';booking.tags=[];booking.materialChoices={};invalidateBookingCalendarSelection();renderBooking();return; }
   if(t.dataset.tag!==undefined){ const v=t.dataset.tag; booking.tags=booking.tags.includes(v)?booking.tags.filter(x=>x!==v):[...booking.tags,v];renderBooking();return; }
   if(t.dataset.size!==undefined){const v=t.dataset.size;booking.size=booking.size===v&&!currentOptions(booking).required?.size?'':v;renderBooking();return;}
   if(t.dataset.thickness!==undefined){const v=t.dataset.thickness;booking.thickness=booking.thickness===v&&!currentOptions(booking).required?.thickness?'':v;renderBooking();return;}
   if(t.dataset.material!==undefined){const v=t.dataset.material;const optional=!currentOptions(booking).required?.material;if(optional&&booking.materialId===v){booking.materialId='';booking.color='';}else{booking.materialId=v;booking.color='';}renderBooking();return;}
   if(t.dataset.color!==undefined){const v=t.dataset.color;booking.color=booking.color===v&&!currentOptions(booking).required?.color?'':v;renderBooking();return;}
   if(t.dataset.provider!==undefined){const v=t.dataset.provider;booking.materialProvider=v;renderBooking();return;}
-  if(t.dataset.professional!==undefined){booking.professionalId=t.dataset.professional;booking.date='';booking.time='';renderBooking();return;}
-  if(t.dataset.date!==undefined){booking.date=t.dataset.date;booking.time='';booking.period='';loadRealSlotsForBooking().then(renderBooking).catch(e=>{console.error(e);notify('Não foi possível consultar os horários desta data.');renderBooking();});renderBooking();return;}
+  if(t.dataset.professional!==undefined){booking.professionalId=t.dataset.professional;invalidateBookingCalendarSelection();renderBooking();return;}
+  if(t.dataset.date!==undefined){booking.date=t.dataset.date;booking.time='';booking.period='';booking.calendarPrefillSource='';booking.calendarPrefillValidated=false;loadRealSlotsForBooking().then(renderBooking).catch(e=>{console.error(e);notify('Não foi possível consultar os horários desta data.');renderBooking();});renderBooking();return;}
   if(t.dataset.slot!==undefined){booking.time=t.dataset.slot;booking.period=t.dataset.slot;renderBooking();return;}
   if(t.dataset.period!==undefined){booking.period=t.dataset.period;renderBooking();return;}
   if(t.dataset.hairChange!==undefined){booking.hairChange=t.dataset.hairChange; if(booking.hairChange==='yes') booking.anamnesis=emptyAnamnesis(); renderBooking();return;}
@@ -604,9 +645,36 @@ function validateStep(id){
   return '';
 }
 async function nextBookingStep(){
+  if(bookingCalendarIntroOpen)return continueBookingFromCalendarIntro();
   const s=steps(), id=s[stepIndex].id, err=validateStep(id); if(err) return notify(err,'Falta uma informação');
   if(id==='final') return submitRequest();
+  if(id==='summary'&&booking.calendarPrefillSource==='calendar'){
+    let matching=false;
+    try{
+      const real=await loadRealSlotsForBooking();
+      matching=real.some(slot=>slot.time===booking.time);
+    }catch(e){console.error('Falha ao verificar preferência:',e);}
+    if(matching){
+      try{
+        const session=await ensureClientAuth();
+        if(!session)return;
+        await loadVerifiedClientContact(session);
+      }catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
+      booking.calendarPrefillValidated=true;
+      stepIndex=steps().findIndex(step=>step.id==='client');
+      renderBooking();
+      return;
+    }
+    booking.calendarPrefillSource='';booking.calendarPrefillValidated=false;
+    booking.time='';booking.period='';
+    notify('O horário de preferência não está disponível para este atendimento. Escolha outro horário no calendário.','Horário indisponível');
+  }
   if(id==='date'){
+    try{
+      const real=await loadRealSlotsForBooking();
+      if(!real.length||(!isMaintenanceBooking(booking)&&!real.some(slot=>slot.time===booking.time)))
+        return notify('Este horário não está mais disponível. Selecione outro.','Horário indisponível');
+    }catch(e){return notify('Não foi possível conferir este horário. Tente novamente.','Agenda indisponível');}
     try{
       const session=await ensureClientAuth();
       if(!session)return;
