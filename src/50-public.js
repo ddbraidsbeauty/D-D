@@ -295,7 +295,7 @@ function renderHome(){
   const db=getState();
   const hero=$('#heroImage');if(db.media.hero){hero.src=safeImageSrc(db.media.hero);hero.hidden=false;hero.closest('.heroimg')?.classList.remove('no-photo');}else{hero.removeAttribute('src');hero.hidden=true;hero.closest('.heroimg')?.classList.add('no-photo');}
   const pros=activeProfessionals();
-  $('#homeProTitle').textContent=pros.map(p=>p.name).join(' & ')||'Profissionais';
+  $('#homeProTitle').textContent='Conheça nossa equipe';
   $('#homePros').innerHTML=pros.length?pros.map(p=>{const insta=String(p.instagram||'').trim();const href=insta?(insta.startsWith('http')?insta:`https://instagram.com/${insta.replace('@','')}`):'';return `<article class="pro ${p.image?'':'no-photo'}">${p.image?`<img src="${imageAttr(p.image)}" alt="${esc(p.name)}">`:`<div class="pro-placeholder"><span>D&D</span><b>${esc(p.name)}</b><small>Foto em breve</small></div>`}<div class="caption glass"><div><b>${esc(p.name)}</b>${insta?`<span>${esc(insta)}</span>`:''}</div>${href?`<a class="btn small" href="${esc(href)}" target="_blank" rel="noreferrer">Instagram</a>`:''}</div></article>`}).join(''):`<div class="empty-state">Nenhuma profissional disponível no momento.</div>`;
   $('#featured').innerHTML=activeProcedures().filter(p=>p.special!=='maintenance').slice(0,6).map(publicCard).join('')||`<div class="empty-state">Nenhum procedimento cadastrado.</div>`;
   bindPublicCards();
