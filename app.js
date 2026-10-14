@@ -1671,7 +1671,11 @@ async function bootstrapBackendPublic(){
     state.procedures=procedures; state.professionals=professionals; state.materials=materials; state.accessories=accessories; state.materialRequirements=x.requirements||[];state.materialPrices=x.materialPrices||[];state.materialPricesReady=!!x.materialPricesReady;state.rc7Installed=!!x.rc7Installed;
     state.settings.publicSundays=(x.sundays||[]).filter(s=>s.is_open).map(s=>s.service_date);if(x.brand?.hero_image_path)state.media.hero=assetUrl(x.brand.hero_image_path);if(x.consent?.text!=null)state.settings.consentText=x.consent.text;if(x.consent?.version)state.settings.consentVersion=x.consent.version;
     state.availability={}; for(const p of professionals){const rs=(x.rules||[]).filter(r=>r.professional_id===p.id&&r.is_active);state.availability[p.id]={weekdays:[...new Set(rs.map(r=>Number(r.weekday)))],start:rs.map(r=>String(r.start_time).slice(0,5)).sort()[0]||'08:00',end:rs.map(r=>String(r.end_time).slice(0,5)).sort().at(-1)||'18:00',blocks:(x.exceptions||[]).filter(e=>e.professional_id===p.id&&!e.is_available).map(e=>({date:e.exception_date,reason:'Exceção de agenda'}))};}
-    saveState(); publicCatalogReady=true; renderHome();renderCatalog(); if(routeHash()==='booking')renderBooking(); finishAuthCallback();
+    saveState(); publicCatalogReady=true; renderHome();renderCatalog();
+    // If a parallel admin login/snapshot completed first, refresh the visible
+    // dashboard once the catalog is loaded rather than leaving it empty.
+    refreshAdmin();
+    if(routeHash()==='booking')renderBooking(); finishAuthCallback();
   }catch(e){console.error('Backend bootstrap failed',e);notify('Não foi possível atualizar os dados online agora.','Conexão');}
 }
 function authModal(prefill=''){
@@ -1981,11 +1985,14 @@ $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeModal()
 
 initPublic();
 initAdmin();
-// Restore the actual Supabase administrative role, not a browser flag.
-restoreAdminSessionOnLoad().catch(e=>console.error('Admin restore failed',e));
 renderHome();
 renderCatalog();
-bootstrapBackendPublic();
+// Public catalog must load before the admin snapshot is mapped to UI objects.
+// Starting both requests in parallel let an already-signed-in admin see blank
+// procedures, professionals and financial cards until a manual refresh.
+bootstrapBackendPublic()
+  .then(()=>restoreAdminSessionOnLoad())
+  .catch(e=>console.error('Admin bootstrap failed',e));
 
 window.DDBraids = {
   getState,
