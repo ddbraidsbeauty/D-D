@@ -108,12 +108,17 @@ function renderCatalogAdmin(){
   const db=getState(); return `<div class="catalog-admin-grid"><section class="glass admin-list"><div class="between"><div><h2>Procedimentos</h2><p class="muted">Métodos, variações e obrigatoriedade são configurados aqui.</p></div><button class="btn gold" data-new-procedure>Novo procedimento</button></div>${db.procedures.map(p=>`<div class="row"><img class="uploadpreview" src="${imageAttr(p.image)}" alt=""><div><b>${esc(p.name)}</b><span>${esc(p.category)} • ${money(p.price)} • ${p.active?'Ativo':'Inativo'}</span></div><button class="btn small" data-edit-procedure="${p.id}">Editar</button><button class="btn small" data-methods="${p.id}">Métodos</button></div>`).join('')||`<p class="empty-state">Nenhum procedimento cadastrado.</p>`}</section><section class="glass admin-list"><h2>Materiais</h2><button class="btn gold" data-new-material>Novo material</button>${db.materials.map(m=>`<div class="row"><img class="uploadpreview" src="${imageAttr(m.image)}" alt=""><div><b>${esc(m.name)}</b><span>${esc((m.colors||[]).join(', '))}</span></div><button class="btn small" data-edit-material="${m.id}">Editar</button></div>`).join('')}<hr><h2>Acessórios</h2><button class="btn gold" data-new-accessory>Novo acessório</button>${db.accessories.map(a=>`<div class="row"><img class="uploadpreview" src="${imageAttr(a.image)}" alt=""><div><b>${esc(a.name)}</b><span>${money(a.price)}</span></div><button class="btn small" data-edit-accessory="${a.id}">Editar</button></div>`).join('')}</section></div>`;
 }
 
+// Registro financeiro agrupado pela data civil da D&D (Brasil), não pela data UTC.
+function financeDayISO(timestamp){
+  return new Intl.DateTimeFormat('en-CA',{timeZone:'America/Sao_Paulo',year:'numeric',month:'2-digit',day:'2-digit'})
+    .format(new Date(timestamp));
+}
 function financeEvents(){
   const db=getState(), out=[];
   for(const a of db.appointments){
-    if(a.bookingFeePaid&&a.bookingFeePaidAt)out.push({date:new Date(a.bookingFeePaidAt).toISOString().slice(0,10),at:a.bookingFeePaidAt,type:'signal',amount:Number(a.bookingFeeAmount||0),a});
-    if(a.paid&&a.paidAt)out.push({date:new Date(a.paidAt).toISOString().slice(0,10),at:a.paidAt,type:'final',amount:Number(a.finalPaymentAmount||balanceAmount(a)),a});
-    if(a.refundStatus==='refunded'&&a.refundedAt)out.push({date:new Date(a.refundedAt).toISOString().slice(0,10),at:a.refundedAt,type:'refund',amount:-Number(a.bookingFeeAmount||0),a});
+    if(a.bookingFeePaid&&a.bookingFeePaidAt)out.push({date:financeDayISO(a.bookingFeePaidAt),at:a.bookingFeePaidAt,type:'signal',amount:Number(a.bookingFeeAmount||0),a});
+    if(a.paid&&a.paidAt)out.push({date:financeDayISO(a.paidAt),at:a.paidAt,type:'final',amount:Number(a.finalPaymentAmount||balanceAmount(a)),a});
+    if(a.refundStatus==='refunded'&&a.refundedAt)out.push({date:financeDayISO(a.refundedAt),at:a.refundedAt,type:'refund',amount:-Number(a.bookingFeeAmount||0),a});
   }
   return out;
 }
