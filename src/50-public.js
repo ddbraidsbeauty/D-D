@@ -235,6 +235,8 @@ function showBookingEntryChoice(session,hasInMemory=false,hasStoredDraft=false){
   });
 }
 async function openBookingFromNavigation(){
+  // A user can dismiss the modal with X or by clicking its backdrop.
+  if(bookingEntryChoiceOpen&&!$('#modal').classList.contains('open'))bookingEntryChoiceOpen=false;
   if(bookingEntryChoiceOpen)return;
   const inProgress=!!booking.procedureId&&stepIndex>0;
   let session=null,stored=null;

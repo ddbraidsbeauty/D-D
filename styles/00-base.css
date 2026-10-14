@@ -30,7 +30,7 @@
 .contact-summary b{display:block;overflow-wrap:anywhere}
 .client-contact-confirm>.btn{justify-self:start}
 .client-contact-form .iti{width:100%;display:block;min-width:0}
-.client-contact-form .iti input{width:100%;padding-left:105px}
+.client-contact-form .iti input{width:100%}
 .client-contact-form .iti__country-container{z-index:2}
 .client-contact-form .iti__dropdown-content{background:var(--solid);color:var(--text);border-color:var(--line);z-index:100}
 .client-contact-form .iti__search-input{background:var(--solid);color:var(--text)}

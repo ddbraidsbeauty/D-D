@@ -33,7 +33,7 @@
 .contact-summary b{display:block;overflow-wrap:anywhere}
 .client-contact-confirm>.btn{justify-self:start}
 .client-contact-form .iti{width:100%;display:block;min-width:0}
-.client-contact-form .iti input{width:100%;padding-left:105px}
+.client-contact-form .iti input{width:100%}
 .client-contact-form .iti__country-container{z-index:2}
 .client-contact-form .iti__dropdown-content{background:var(--solid);color:var(--text);border-color:var(--line);z-index:100}
 .client-contact-form .iti__search-input{background:var(--solid);color:var(--text)}
@@ -57,6 +57,7 @@
  .top>.header-cta{padding:9px 10px}
  .public-mobile-menu{flex-basis:38px;width:38px;height:38px}
 }
+
 /* === 10-finance-status.css === */
 /* V8 — estados, checkboxes, pendências e histórico financeiro */
 .nav-item{position:relative}.nav-badge{margin-left:auto!important;min-width:22px;height:22px;padding:0 6px;border-radius:999px;background:var(--gold);color:#211708!important;display:grid!important;place-items:center;font-size:10px!important;font-weight:900}.sidebar-collapsed .nav-badge{position:absolute;right:4px;top:4px;min-width:17px;height:17px;padding:0;font-size:8px!important}
