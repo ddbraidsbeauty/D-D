@@ -54,3 +54,20 @@
  .top>.header-cta{padding:9px 10px}
  .public-mobile-menu{flex-basis:38px;width:38px;height:38px}
 }
+
+/* Admin preview remains unmistakable on desktop and mobile. */
+.admin-preview-banner{position:fixed;z-index:65;top:0;left:0;right:0;min-height:52px;display:flex;align-items:center;justify-content:center;gap:20px;padding:7px 16px;background:#3a2a14;color:#fff6e0;border-bottom:2px solid var(--gold);box-shadow:0 5px 24px rgba(0,0,0,.32);font-size:13px;text-align:center}
+.admin-preview-banner strong{color:var(--gold2);letter-spacing:.07em}
+.admin-preview-banner .btn{padding:7px 13px;white-space:nowrap;color:#19140b}
+#publicRoot.admin-preview .top{top:68px}
+#publicRoot.admin-preview .page{padding-top:190px}
+#publicRoot.admin-preview .hero{padding-top:185px}
+#publicRoot.admin-preview a[href="#booking"],#publicRoot.admin-preview .book-procedure{opacity:.48;cursor:not-allowed}
+#publicRoot.admin-preview .book-procedure:focus-visible,#publicRoot.admin-preview a[href="#booking"]:focus-visible{outline:2px dashed var(--gold2)}
+@media(max-width:700px){
+  .admin-preview-banner{gap:8px;justify-content:space-between;font-size:11px;padding:6px 9px;min-height:58px;text-align:left}
+  .admin-preview-banner .btn{padding:7px 8px;font-size:11px}
+  #publicRoot.admin-preview .top{top:70px}
+  #publicRoot.admin-preview .page{padding-top:186px}
+  #publicRoot.admin-preview .hero{padding-top:170px}
+}
