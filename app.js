@@ -1059,7 +1059,7 @@ async function nextBookingStep(){
     const previewSteps=steps(),previewStep=previewSteps[stepIndex];
     if(!previewStep||previewStep.id==='date'||previewStep.id==='client'||previewStep.id==='anamnesis'||previewStep.id==='consent'||previewStep.id==='final')
       return notify('A prévia termina no calendário. Nenhuma reserva será criada.','Visualização administrativa');
-    const previewError=validateStep(previewStep.id);
+    const previewError=previewStep.id==='summary'?'':validateStep(previewStep.id);
     if(previewError)return notify(previewError,'Falta uma informação');
     stepIndex++;
     if(steps()[stepIndex]?.id==='client')return notify('Prévia limitada ao calendário.','Visualização administrativa');
