@@ -13,7 +13,7 @@ async function render(refunds){
     innerHTML:'',
     querySelectorAll(selector){
       return selector==='.rc7-admin-grid > section'
-        ? [{innerHTML:''},{innerHTML:'',insertAdjacentHTML(){}},{innerHTML:''}]
+        ? [{innerHTML:''},{innerHTML:'',insertAdjacentHTML(){}}]
         : [];
     }
   };
@@ -43,7 +43,9 @@ async function render(refunds){
 
 (async()=>{
   const initial=await render([]);
-  assert.equal((initial.match(/rc7-admin-panel/g)||[]).length,3);
+  assert.equal((initial.match(/rc7-admin-panel/g)||[]).length,2);
+  assert(!initial.includes('Valores dos materiais'));
+  assert(!initial.includes('rc7PricePro'));
   assert.equal((initial.match(/Aguardando a cliente escolher: Pix ou crédito/g)||[]).length,2);
   assert(initial.includes('Cliente Teste A')&&initial.includes('Cliente Teste B'));
   assert(initial.includes('Nenhum Pix aguardando transferência.'));
