@@ -68,7 +68,25 @@ function refreshUpload(id,value){
   if(rem) rem.classList.toggle('hidden',!value);
 }
 
-function waLink(phone,text){ return `https://wa.me/${phoneKey(phone)}?text=${encodeURIComponent(text)}`; }
+// Numbers stored by the new booking form always include their country code.
+function canonicalContactPhone(value){
+  const raw=String(value||'').trim(), digits=phoneKey(raw);
+  if(!digits)return '';
+  if(raw.startsWith('+'))return '+'+digits;
+  if(digits.length===10||digits.length===11)return '+55'+digits;
+  if(digits.startsWith('55')&&(digits.length===12||digits.length===13))return '+'+digits;
+  return '+'+digits;
+}
+function contactPhoneDisplay(value){
+  const digits=phoneKey(canonicalContactPhone(value));
+  if(digits.startsWith('55')&&(digits.length===12||digits.length===13)){
+    const local=digits.slice(2),subscriber=local.slice(2);
+    return '+55 ('+local.slice(0,2)+') '+subscriber.slice(0,subscriber.length-4)+'-'+subscriber.slice(-4);
+  }
+  return digits?'+'+digits:'—';
+}
+function whatsAppDigits(phone){return phoneKey(canonicalContactPhone(phone));}
+function waLink(phone,text){ return `https://wa.me/${whatsAppDigits(phone)}?text=${encodeURIComponent(text)}`; }
 function csv(v){ return String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function routeHash(){ const h=location.hash.replace(/^#/,''); if(/(?:^|&)access_token=|(?:^|&)refresh_token=|(?:^|&)error(?:_code|_description)?=/.test(h)) return 'booking'; return h.split('?')[0] || 'home'; }
 function paramsFromHash(){ const p=location.hash.split('?')[1]||''; return new URLSearchParams(p); }

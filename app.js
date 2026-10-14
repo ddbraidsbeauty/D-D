@@ -92,7 +92,25 @@ function refreshUpload(id,value){
   if(rem) rem.classList.toggle('hidden',!value);
 }
 
-function waLink(phone,text){ return `https://wa.me/${phoneKey(phone)}?text=${encodeURIComponent(text)}`; }
+// Numbers stored by the new booking form always include their country code.
+function canonicalContactPhone(value){
+  const raw=String(value||'').trim(), digits=phoneKey(raw);
+  if(!digits)return '';
+  if(raw.startsWith('+'))return '+'+digits;
+  if(digits.length===10||digits.length===11)return '+55'+digits;
+  if(digits.startsWith('55')&&(digits.length===12||digits.length===13))return '+'+digits;
+  return '+'+digits;
+}
+function contactPhoneDisplay(value){
+  const digits=phoneKey(canonicalContactPhone(value));
+  if(digits.startsWith('55')&&(digits.length===12||digits.length===13)){
+    const local=digits.slice(2),subscriber=local.slice(2);
+    return '+55 ('+local.slice(0,2)+') '+subscriber.slice(0,subscriber.length-4)+'-'+subscriber.slice(-4);
+  }
+  return digits?'+'+digits:'—';
+}
+function whatsAppDigits(phone){return phoneKey(canonicalContactPhone(phone));}
+function waLink(phone,text){ return `https://wa.me/${whatsAppDigits(phone)}?text=${encodeURIComponent(text)}`; }
 function csv(v){ return String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function routeHash(){ const h=location.hash.replace(/^#/,''); if(/(?:^|&)access_token=|(?:^|&)refresh_token=|(?:^|&)error(?:_code|_description)?=/.test(h)) return 'booking'; return h.split('?')[0] || 'home'; }
 function paramsFromHash(){ const p=location.hash.split('?')[1]||''; return new URLSearchParams(p); }
@@ -372,6 +390,11 @@ let stepIndex = 0;
 // Never reuse demo data, phone-matched records or another client's profile.
 let currentClientHairProfile = null;
 let currentClientHairProfileOwnerId = null;
+let currentClientContactOwnerId = null;
+let clientHasSavedContact = false;
+let clientContactEditing = true;
+let bookingPhoneInputInstance = null;
+let bookingEntryChoiceOpen = false;
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
 const HAIR_PATTERNS=['1A','1B','1C','2A','2B','2C','3A','3B','3C','4A','4B','4C'];
 const HAIR_DESCRIPTIONS={ '1A':'Liso reto','1B':'Liso com leve corpo','1C':'Liso encorpado','2A':'Ondulado suave','2B':'Ondulado definido','2C':'Ondulado forte','3A':'Cacheado solto','3B':'Cacheado definido','3C':'Cacheado fechado','4A':'Crespo em espiral','4B':'Crespo em Z','4C':'Crespo denso' };
@@ -471,11 +494,13 @@ async function finishAuthCallback(){
   try{
     const session=await DDB.session();
     if(!session?.user)return;
-    if(restorePendingBookingDraft(session)){
+    // Email confirmation can offer a draft; a normal signed-in visit must not jump to step 7.
+    if(callback&&readPendingBookingDraft(session)){
       authRecoveryCompleted=true;
       history.replaceState(null,'',appBaseUrl()+'#booking');
+      booking=newBooking();stepIndex=0;
       renderPublicRoute();
-      notify('As escolhas do seu atendimento foram recuperadas. Confira os dados e continue o agendamento.','Agendamento recuperado');
+      showBookingEntryChoice(session,false,true);
       return;
     }
     if(callback && hasAuthCallback()){
@@ -500,6 +525,9 @@ function initPublic(){
     )){
       currentClientHairProfile=null;
       currentClientHairProfileOwnerId=null;
+      currentClientContactOwnerId=null;
+      clientHasSavedContact=false;
+      clientContactEditing=true;
     }
     if(event==='PASSWORD_RECOVERY'){
       passwordRecoveryActive=true;
@@ -518,6 +546,20 @@ function initPublic(){
   $('#bookingBody').addEventListener('click',handleBookingClick);
   $('#bookingBody').addEventListener('input',handleBookingInput);
   $('#bookingBody').addEventListener('change',handleBookingInput);
+  $('#publicMobileMenu')?.addEventListener('click',()=>{
+    const nav=$('#publicNav'),button=$('#publicMobileMenu');
+    const expanded=button.getAttribute('aria-expanded')==='true';
+    nav.classList.toggle('is-open',!expanded);
+    button.setAttribute('aria-expanded',String(!expanded));
+    button.setAttribute('aria-label',expanded?'Abrir menu':'Fechar menu');
+  });
+  document.addEventListener('click',event=>{
+    if(!event.target.closest('.top'))closePublicMobileMenu();
+    const link=event.target.closest('a[href="#booking"]');
+    if(!link||link.closest('#adminRoot'))return;
+    event.preventDefault();closePublicMobileMenu();openBookingFromNavigation();
+  });
+  document.addEventListener('keydown',event=>{if(event.key==='Escape')closePublicMobileMenu();});
   window.addEventListener('hashchange',renderPublicRoute);
   if(passwordRecoveryError){
     setTimeout(()=>{notify(passwordRecoveryError,'Link inválido');},150);
@@ -528,6 +570,11 @@ function initPublic(){
 function renderPublicRoute(){
   const route=routeHash();
   if(['admin','admin-login'].includes(route)) return;
+  closePublicMobileMenu();
+  $$('#publicNav a').forEach(a=>{
+    if(a.getAttribute('href')==='#'+route)a.setAttribute('aria-current','page');
+    else a.removeAttribute('aria-current');
+  });
   $$('.screen').forEach(x=>x.classList.remove('active'));
   const el=$(`#${route}`) || $('#home'); el.classList.add('active');
   if(route==='home') renderHome();
@@ -537,6 +584,52 @@ function renderPublicRoute(){
   if(route==='reset-password') renderResetPassword();
   if(route==='special-consent') renderSpecificConsent();
   window.scrollTo({top:0,behavior:'instant'});
+}
+
+function closePublicMobileMenu(){
+  $('#publicNav')?.classList.remove('is-open');
+  const button=$('#publicMobileMenu');
+  if(button){button.setAttribute('aria-expanded','false');button.setAttribute('aria-label','Abrir menu');}
+}
+function clearPendingBookingDraft(){
+  try{localStorage.removeItem(BOOKING_DRAFT_KEY);}catch{}
+  DDB.session().then(s=>{
+    if(s?.user?.user_metadata?.ddb_booking_draft)
+      return DDB.sb.auth.updateUser({data:{ddb_booking_draft:null}});
+  }).catch(e=>console.warn('Limpeza do rascunho adiada:',e));
+}
+function openFreshBooking(){
+  booking=newBooking();stepIndex=0;
+  currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
+  clearPendingBookingDraft();
+  if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+}
+function showBookingEntryChoice(session,hasInMemory=false,hasStoredDraft=false){
+  if(bookingEntryChoiceOpen)return;
+  bookingEntryChoiceOpen=true;
+  openModal('Seu agendamento',`<div class="booking-resume-choice"><p>Você tem um atendimento em andamento. Quer continuar de onde parou ou iniciar um novo agendamento?</p><div class="modal-actions"><button class="btn gold" type="button" data-resume-booking>Continuar agendamento</button><button class="btn" type="button" data-new-booking>Começar outro</button></div></div>`,root=>{
+    $('[data-resume-booking]',root).onclick=()=>{
+      bookingEntryChoiceOpen=false;closeModal();
+      if(!hasInMemory&&hasStoredDraft&&!restorePendingBookingDraft(session)){
+        notify('Não foi possível recuperar esse rascunho.','Agendamento');return;
+      }
+      if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+    };
+    $('[data-new-booking]',root).onclick=()=>{bookingEntryChoiceOpen=false;closeModal();openFreshBooking();};
+  });
+}
+async function openBookingFromNavigation(){
+  // A user can dismiss the modal with X or by clicking its backdrop.
+  if(bookingEntryChoiceOpen&&!$('#modal').classList.contains('open'))bookingEntryChoiceOpen=false;
+  if(bookingEntryChoiceOpen)return;
+  const inProgress=!!booking.procedureId;
+  let session=null,stored=null;
+  if(!inProgress){
+    try{session=await DDB.session();stored=readPendingBookingDraft(session);}
+    catch(e){console.warn('Rascunho indisponível:',e);}
+  }
+  if(inProgress||stored)showBookingEntryChoice(session,inProgress,!!stored);
+  else openFreshBooking();
 }
 
 function renderHome(){
@@ -562,7 +655,16 @@ function renderCatalog(){
   bindPublicCards();
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
-function startBooking(id){ booking=newBooking(id); stepIndex=1; location.hash='#booking'; renderBooking(); }
+function startBooking(id){
+  const begin=()=>{
+    booking=newBooking(id);stepIndex=1;
+    currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
+    clearPendingBookingDraft();location.hash='#booking';renderBooking();
+  };
+  if(booking.procedureId&&stepIndex>0)
+    askConfirm({title:'Trocar de atendimento?',message:'Suas escolhas anteriores serão substituídas pelo novo procedimento.',confirmText:'Trocar procedimento',onConfirm:begin});
+  else begin();
+}
 
 function steps(){
   const p=getProcedure(booking.procedureId), target=targetProcedure(booking), method=selectedMethod(booking), opts=currentOptions(booking), db=getState();
@@ -596,15 +698,104 @@ function compatibleAccessories(){
   return db.accessories.filter(a=>a.active && ((a.compatibility||[]).includes('*') || keys.some(k=>(a.compatibility||[]).includes(k))));
 }
 
+async function loadVerifiedClientContact(session){
+  const userId=session?.user?.id;
+  if(!userId)throw new Error('Entre na sua conta antes de continuar.');
+  // Preserve edits when the client goes back to the date step and returns.
+  if(currentClientContactOwnerId===userId&&(booking.clientName||booking.phone))return;
+  if(currentClientContactOwnerId!==userId){
+    booking.clientName='';booking.phone='';booking.email='';
+    clientHasSavedContact=false;clientContactEditing=true;
+  }
+  const appointments=(await DDB.myAppointments()).filter(a=>a.client_id===userId);
+  const recent=appointments[0]||null;
+  const saved=session.user.user_metadata?.ddb_client_contact||{};
+  const previousName=String(saved.name||recent?.client_name||session.user.user_metadata?.full_name||'');
+  const previousPhone=String(saved.phone||recent?.client_phone||'');
+  const previousEmail=String(saved.email||recent?.client_email||session.user.email||'');
+  booking.clientName=previousName==='Cliente'?'':previousName;
+  booking.phone=canonicalContactPhone(previousPhone);
+  booking.email=previousEmail;
+  clientHasSavedContact=!!(recent||saved.phone);
+  clientContactEditing=!clientHasSavedContact;
+  currentClientContactOwnerId=userId;
+}
+function renderClientContactStep(){
+  if(clientHasSavedContact&&!clientContactEditing){
+    return `<div class="client-contact-confirm"><h2>Confirme seus dados</h2><p class="muted">Encontramos os dados da sua conta. Confira antes de continuar.</p><div class="contact-summary">
+      <div><small>Nome completo</small><b>${esc(booking.clientName||'—')}</b></div>
+      <div><small>WhatsApp</small><b>${esc(contactPhoneDisplay(booking.phone))}</b></div>
+      <div><small>E-mail de contato</small><b>${esc(booking.email||'—')}</b></div>
+    </div><button class="btn" type="button" data-client-edit>✎ Editar dados</button></div>`;
+  }
+  return `<div class="form-grid client-contact-form">
+    <label>Nome completo *<input data-booking-field="clientName" autocomplete="name" value="${esc(booking.clientName)}"></label>
+    <label>WhatsApp *<input type="tel" id="bookingPhoneInput" data-booking-field="phone" autocomplete="tel" inputmode="tel" aria-label="WhatsApp com DDI e país" value="${esc(booking.phone)}"></label>
+    <label>E-mail de contato<input type="email" data-booking-field="email" autocomplete="email" value="${esc(booking.email)}"><span class="contact-help">O e-mail de contato não altera o login da conta.</span></label>
+  </div>`;
+}
+function initBookingPhoneInput(){
+  const input=$('#bookingPhoneInput');
+  if(!input)return;
+  if(typeof window.intlTelInput!=='function'){
+    input.placeholder='+55 (33) 99106-3852';
+    input.setAttribute('aria-description','Informe +55 e DDD. Seletor de países indisponível; recarregue a página.');
+    return;
+  }
+  const iti=window.intlTelInput(input,{
+    initialCountry:'br',countryOrder:['br','us','pt','gb','ar'],
+    separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+    loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
+  });
+  bookingPhoneInputInstance=iti;
+  if(booking.phone)iti.setNumber(canonicalContactPhone(booking.phone));
+  const update=()=>{
+    const dial=String(iti.getSelectedCountryData()?.dialCode||'');
+    const national=phoneKey(input.value);
+    booking.phone=national&&dial?'+'+dial+national:(national&&input.value.trim().startsWith('+')?'+'+national:'');
+    const fromPlugin=iti.getNumber();
+    if(national&&fromPlugin?.startsWith('+')&&phoneKey(fromPlugin).length<=15)booking.phone=fromPlugin;
+  };
+  input.addEventListener('input',update);
+  input.addEventListener('countrychange',update);
+  iti.promise?.then(()=>{
+    if(bookingPhoneInputInstance===iti&&input.isConnected&&booking.phone){
+      iti.setNumber(booking.phone);update();
+    }
+  }).catch(e=>console.warn('Formatação internacional avançada indisponível:',e));
+}
+function bookingContactPhoneValid(){
+  const phone=String(booking.phone||''),digits=phoneKey(phone);
+  if(!phone.startsWith('+')||digits.length<9||digits.length>15)return false;
+  if(digits.startsWith('55'))return digits.length===12||digits.length===13;
+  return true;
+}
+async function saveVerifiedClientContact(session){
+  const userId=session?.user?.id;
+  if(!userId||currentClientContactOwnerId!==userId)throw new Error('A conta mudou. Confira os dados e entre novamente.');
+  const identity=await DDB.sb.auth.getUser();
+  if(identity.error||identity.data?.user?.id!==userId)throw new Error('Sua sessão mudou. Entre novamente.');
+  const contact={name:booking.clientName.trim(),phone:booking.phone,email:booking.email.trim()};
+  const previous=identity.data.user.user_metadata?.ddb_client_contact||{};
+  if(previous.name!==contact.name||previous.phone!==contact.phone||previous.email!==contact.email){
+    const {error}=await DDB.sb.auth.updateUser({data:{ddb_client_contact:contact}});
+    if(error)throw error;
+  }
+  clientHasSavedContact=true;clientContactEditing=false;
+}
+
 function renderBooking(){
+  if(bookingPhoneInputInstance){bookingPhoneInputInstance.destroy();bookingPhoneInputInstance=null;}
   const s=steps(); if(stepIndex>=s.length) stepIndex=s.length-1; if(stepIndex<0) stepIndex=0;
   const step=s[stepIndex];
   $('#stepLabel').textContent=`${stepIndex+1}. ${step.label}`;
   $('#stepDots').innerHTML=s.map((_,i)=>`<i class="dot ${i===stepIndex?'on':''}"></i>`).join('');
   $('#backBtn').classList.toggle('hidden',stepIndex===0);
-  $('#nextBtn').textContent=step.id==='final'?'Enviar solicitação':'Continuar →';
+  $('#nextBtn').textContent=step.id==='final'?'Enviar solicitação':
+    step.id==='client'&&clientHasSavedContact&&!clientContactEditing?'Confirmar e continuar →':'Continuar →';
   $('#bookingBody').innerHTML=renderStep(step.id);
   if(step.id==='date') bindCalendarControls();
+  if(step.id==='client'&&(!clientHasSavedContact||clientContactEditing))initBookingPhoneInput();
 }
 
 function visualChoice(id,label,image,selected,attr='data-choice'){
@@ -658,7 +849,7 @@ function renderStep(id){
     return `<div class="visual-choices">${list.map(x=>visualChoice(x.id,x.name,x.image,booking.professionalId===x.id,'data-professional')).join('')||`<div class="empty-state">Nenhuma profissional disponível.</div>`}</div>`;
   }
   if(id==='date') return renderDateStep();
-  if(id==='client') return `<div class="form-grid"><label>Nome completo *<input data-booking-field="clientName" value="${esc(booking.clientName)}"></label><label>WhatsApp *<input data-booking-field="phone" value="${esc(booking.phone)}"></label><label>E-mail<input type="email" data-booking-field="email" value="${esc(booking.email)}"></label></div>`;
+  if(id==='client') return renderClientContactStep();
   if(id==='anamnesis') return renderAnamnesisStep();
   if(id==='consent') return `<div class="consent-card"><h2>Ciência e consentimento</h2><p>${esc(db.settings.consentText)}</p><label class="toggle-option"><input type="checkbox" data-consent ${booking.consentAccepted?'checked':''}><span>Li e concordo</span></label></div>`;
   if(id==='final') return `${summaryCard()}<div class="final-notice"><b>Ao enviar, isso será uma solicitação.</b><p>Nenhum horário é confirmado automaticamente. ${feeAmount(booking)>0?'A profissional enviará os dados do PIX do sinal pelo WhatsApp.':'A profissional revisará sua ficha antes de confirmar.'}</p></div>`;
@@ -693,6 +884,7 @@ function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType
 
 function handleBookingClick(e){
   const t=e.target.closest('button,[data-accessory]'); if(!t) return;
+  if(t.hasAttribute('data-client-edit')){clientContactEditing=true;renderBooking();return;}
   if(t.dataset.accessory!==undefined){ const id=t.dataset.accessory; booking.accessoryIds=booking.accessoryIds.includes(id)?booking.accessoryIds.filter(x=>x!==id):[...booking.accessoryIds,id]; renderBooking(); return; }
   if(t.dataset.procedure!==undefined){ booking=newBooking(t.dataset.procedure); stepIndex=0; renderBooking(); return; }
   if(t.dataset.maintTarget!==undefined){ booking.maintenanceTargetId=t.dataset.maintTarget; booking.methodId='';booking.variationId='';booking.materialChoices={};booking.date='';booking.time='';renderBooking();return; }
@@ -714,7 +906,17 @@ function handleBookingClick(e){
 function handleBookingInput(e){
   const t=e.target;
   if(t.dataset.materialVariant!==undefined){booking.materialChoices=booking.materialChoices||{};booking.materialChoices[t.dataset.materialVariant]=t.value;renderBooking();return;}
-  if(t.dataset.bookingField!==undefined) booking[t.dataset.bookingField]=t.value;
+  if(t.dataset.bookingField!==undefined&&t.dataset.bookingField!=='phone')booking[t.dataset.bookingField]=t.value;
+  if(t.dataset.bookingField==='phone'&&!bookingPhoneInputInstance){
+    booking.phone=canonicalContactPhone(t.value);
+    if(t.value.trim().startsWith('+55')){
+      const d=phoneKey(t.value).slice(2);
+      if(d.length>=2&&d.length<=11){
+        const part=d.slice(2);
+        t.value='+55 ('+d.slice(0,2)+') '+part.slice(0,Math.max(0,part.length-4))+(part.length>4?'-'+part.slice(-4):'');
+      }
+    }
+  }
   if(t.dataset.an!==undefined){booking.anamnesis[t.dataset.an]=t.value; if(t.dataset.an==='classification')booking.anamnesis.hairType=hairTypeForPattern(t.value);}
   if(t.matches('[data-an-heat]')) booking.anamnesis.heatUse=$$('[data-an-heat]:checked',$('#bookingBody')).map(x=>x.value);
   if(t.matches('[data-an-problem]')) booking.anamnesis.problems=$$('[data-an-problem]:checked',$('#bookingBody')).map(x=>x.value);
@@ -745,7 +947,7 @@ function validateStep(id){
   if(id==='professional'&&!booking.professionalId) return 'Escolha uma profissional.';
   if(id==='date'&&!booking.date) return 'Escolha uma data.';
   if(id==='date'&&!isMaintenanceBooking(booking)&&!booking.time) return 'Escolha um horário disponível.';
-  if(id==='client'&&(!booking.clientName.trim()||phoneKey(booking.phone).length<8)) return 'Preencha nome e WhatsApp corretamente.';
+  if(id==='client'&&(!booking.clientName.trim()||!bookingContactPhoneValid())) return 'Preencha nome e WhatsApp com país e DDD corretamente.';
   if(id==='anamnesis'){
     const old=clientCurrentAnamnesis(); if(old&&booking.hairChange===null) return 'Informe se houve alteração capilar desde a última avaliação.';
     if(booking.anamnesisMode==='new'||!old){ const x=booking.anamnesis; const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry']; if(keys.some(k=>!String(x[k]||'').trim())||!x.heatUse.length||!x.problems.length) return 'Preencha todos os campos obrigatórios da anamnese.'; if(!HAIR_PATTERNS.includes(String(x.classification||'').trim().toUpperCase())||x.hairType!==hairTypeForPattern(x.classification))return 'Escolha uma classificação capilar nas imagens.'; }
@@ -760,13 +962,14 @@ async function nextBookingStep(){
     try{
       const session=await ensureClientAuth();
       if(!session)return;
-      if(!booking.email)booking.email=session.user.email||'';
-    }catch(e){return notify(e.message||'Não foi possível entrar na conta.','Login');}
+      await loadVerifiedClientContact(session);
+    }catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
   }
   if(id==='client'){
     try{
       const session=await ensureClientAuth();
       if(!session?.user?.id)return;
+      await saveVerifiedClientContact(session);
       // An unsuccessful lookup must not silently be interpreted as a new client.
       const profile=await DDB.myLatestHairProfile(session.user.id);
       if(currentClientHairProfileOwnerId!==session.user.id){
