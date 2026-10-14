@@ -11,6 +11,9 @@ let clientHasSavedContact = false;
 let clientContactEditing = true;
 let bookingPhoneInputInstance = null;
 let bookingEntryChoiceOpen = false;
+// Preferência provisória exibida antes do procedimento e da profissional.
+let bookingCalendarIntroOpen=false;
+let bookingCalendarIntro={date:'',time:'',year:null,month:null};
 const BOOKING_DRAFT_KEY='ddb_pending_booking_v2';
 const HAIR_PATTERNS=['1A','1B','1C','2A','2B','2C','3A','3B','3C','4A','4B','4C'];
 const HAIR_DESCRIPTIONS={ '1A':'Liso reto','1B':'Liso com leve corpo','1C':'Liso encorpado','2A':'Ondulado suave','2B':'Ondulado definido','2C':'Ondulado forte','3A':'Cacheado solto','3B':'Cacheado definido','3C':'Cacheado fechado','4A':'Crespo em espiral','4B':'Crespo em Z','4C':'Crespo denso' };
@@ -20,7 +23,7 @@ function hairPatternGrid(selected=''){
 }
 
 const BOOKING_DRAFT_TTL=24*60*60*1000;
-const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialId','color','materialProvider','professionalId','date','period','time'];
+const BOOKING_DRAFT_FIELDS=['procedureId','maintenanceTargetId','methodId','variationId','tags','size','thickness','accessoryIds','materialChoices','materialId','color','materialProvider','professionalId','date','period','time','calendarPrefillSource'];
 let publicCatalogReady=false;
 let authRecoveryStarted=false;
 let authRecoveryCompleted=false;
@@ -78,7 +81,8 @@ function restorePendingBookingDraft(session){
     notify('Seu procedimento ainda não está disponível no catálogo. O rascunho foi preservado.','Retomada pendente');
     return false;
   }
-  booking={...newBooking(),...d.booking,clientName:String(session?.user?.user_metadata?.full_name||''),email:String(session?.user?.email||'')};
+  bookingCalendarIntroOpen=false;
+  booking={...newBooking(),...d.booking,calendarPrefillValidated:false,clientName:String(session?.user?.user_metadata?.full_name||''),email:String(session?.user?.email||'')};
   const flow=steps();
   const savedId=String(d.stepId||'');
   const targetIndex=flow.findIndex(x=>x.id===savedId);
@@ -128,7 +132,7 @@ async function finishAuthCallback(){
 }
 
 function newBooking(procedureId=''){
-  return { procedureId, maintenanceTargetId:'', methodId:'', variationId:'', tags:[], size:'', thickness:'', accessoryIds:[], materialId:'', color:'', materialChoices:{}, materialProvider:'', note:'', referenceImage:'', professionalId:'', date:'', period:'', time:'', clientName:'', phone:'', email:'', hairChange:null, anamnesisMode:'', anamnesis:emptyAnamnesis(), consentAccepted:false };
+  return { procedureId, maintenanceTargetId:'', methodId:'', variationId:'', tags:[], size:'', thickness:'', accessoryIds:[], materialId:'', color:'', materialChoices:{}, materialProvider:'', note:'', referenceImage:'', professionalId:'', date:'', period:'', time:'', calendarPrefillSource:'', calendarPrefillValidated:false, clientName:'', phone:'', email:'', hairChange:null, anamnesisMode:'', anamnesis:emptyAnamnesis(), consentAccepted:false };
 }
 
 function initPublic(){
@@ -214,13 +218,20 @@ function clearPendingBookingDraft(){
       return DDB.sb.auth.updateUser({data:{ddb_booking_draft:null}});
   }).catch(e=>console.warn('Limpeza do rascunho adiada:',e));
 }
-function openFreshBooking(){
-  booking=newBooking();stepIndex=0;
+function openFreshBooking(procedureId='',prefill=null){
+  booking=newBooking(procedureId);stepIndex=procedureId?1:0;
+  bookingCalendarIntroOpen=false;
+  if(prefill?.date&&prefill?.time){
+    booking.date=prefill.date;booking.time=prefill.time;booking.period=prefill.time;
+    booking.calendarPrefillSource='calendar';booking.calendarPrefillValidated=false;
+    const month=new Date(prefill.date+'T12:00:00');
+    booking.calendarYear=month.getFullYear();booking.calendarMonth=month.getMonth();
+  }
   currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
   clearPendingBookingDraft();
   if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
 }
-function showBookingEntryChoice(session,hasInMemory=false,hasStoredDraft=false){
+function showBookingEntryChoice(session,hasInMemory=false,hasStoredDraft=false,onNew=null){
   if(bookingEntryChoiceOpen)return;
   bookingEntryChoiceOpen=true;
   openModal('Seu agendamento',`<div class="booking-resume-choice"><p>Você tem um atendimento em andamento. Quer continuar de onde parou ou iniciar um novo agendamento?</p><div class="modal-actions"><button class="btn gold" type="button" data-resume-booking>Continuar agendamento</button><button class="btn" type="button" data-new-booking>Começar outro</button></div></div>`,root=>{
@@ -229,23 +240,42 @@ function showBookingEntryChoice(session,hasInMemory=false,hasStoredDraft=false){
       if(!hasInMemory&&hasStoredDraft&&!restorePendingBookingDraft(session)){
         notify('Não foi possível recuperar esse rascunho.','Agendamento');return;
       }
+      bookingCalendarIntroOpen=false;
       if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
     };
-    $('[data-new-booking]',root).onclick=()=>{bookingEntryChoiceOpen=false;closeModal();openFreshBooking();};
+    $('[data-new-booking]',root).onclick=()=>{
+      bookingEntryChoiceOpen=false;closeModal();
+      if(onNew)onNew();else openFreshBooking();
+    };
   });
 }
-async function openBookingFromNavigation(){
-  // A user can dismiss the modal with X or by clicking its backdrop.
+async function promptExistingBookingOrStart(onNew){
   if(bookingEntryChoiceOpen&&!$('#modal').classList.contains('open'))bookingEntryChoiceOpen=false;
   if(bookingEntryChoiceOpen)return;
   const inProgress=!!booking.procedureId;
   let session=null,stored=null;
-  if(!inProgress){
-    try{session=await DDB.session();stored=readPendingBookingDraft(session);}
-    catch(e){console.warn('Rascunho indisponível:',e);}
-  }
-  if(inProgress||stored)showBookingEntryChoice(session,inProgress,!!stored);
-  else openFreshBooking();
+  try{session=await DDB.session();stored=readPendingBookingDraft(session);}
+  catch(e){console.warn('Rascunho indisponível:',e);}
+  if(inProgress||stored)showBookingEntryChoice(session,inProgress,!!stored,onNew);
+  else onNew();
+}
+function openBookingFromNavigation(){
+  // Consultar calendário não descarta automaticamente o rascunho anterior.
+  const today=new Date(todayISO()+'T12:00:00');
+  bookingCalendarIntro={date:'',time:'',year:today.getFullYear(),month:today.getMonth()};
+  bookingCalendarIntroOpen=true;
+  if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+}
+async function continueBookingFromCalendarIntro(){
+  const chosen={date:bookingCalendarIntro.date,time:bookingCalendarIntro.time};
+  if(!chosen.date||!chosen.time)
+    return notify('Selecione uma data e um horário de preferência.','Falta uma informação');
+  await promptExistingBookingOrStart(()=>openFreshBooking('',chosen));
+}
+function invalidateBookingCalendarSelection(){
+  booking.calendarPrefillValidated=false;
+  if(booking.calendarPrefillSource==='calendar')return;
+  booking.date='';booking.time='';booking.period='';
 }
 
 function renderHome(){
@@ -272,14 +302,8 @@ function renderCatalog(){
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
 function startBooking(id){
-  const begin=()=>{
-    booking=newBooking(id);stepIndex=1;
-    currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
-    clearPendingBookingDraft();location.hash='#booking';renderBooking();
-  };
-  if(booking.procedureId&&stepIndex>0)
-    askConfirm({title:'Trocar de atendimento?',message:'Suas escolhas anteriores serão substituídas pelo novo procedimento.',confirmText:'Trocar procedimento',onConfirm:begin});
-  else begin();
+  promptExistingBookingOrStart(()=>openFreshBooking(id))
+    .catch(e=>notify(e.message||'Não foi possível iniciar o agendamento.','Agendamento'));
 }
 
 function steps(){
@@ -294,7 +318,7 @@ function steps(){
   s.push({id:'professional',label:'Profissional'});
   if(compatibleMaterials().length) s.push({id:'material',label:'Materiais'});
   s.push({id:'summary',label:'Resumo'});
-  s.push({id:'date',label:'Data'});
+  if(!booking.calendarPrefillValidated)s.push({id:'date',label:'Data'});
   s.push({id:'client',label:'Seus dados'});
   s.push({id:'anamnesis',label:'Anamnese'});
   s.push({id:'consent',label:'Consentimento'});
@@ -401,6 +425,14 @@ async function saveVerifiedClientContact(session){
 }
 
 function renderBooking(){
+  if(bookingCalendarIntroOpen){
+    $('#stepLabel').textContent='Escolha data e horário';
+    $('#stepDots').innerHTML='';
+    $('#backBtn').classList.add('hidden');
+    $('#nextBtn').textContent='Continuar →';
+    $('#bookingBody').innerHTML=renderCalendarIntro();
+    return;
+  }
   if(bookingPhoneInputInstance){bookingPhoneInputInstance.destroy();bookingPhoneInputInstance=null;}
   const s=steps(); if(stepIndex>=s.length) stepIndex=s.length-1; if(stepIndex<0) stepIndex=0;
   const step=s[stepIndex];
