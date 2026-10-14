@@ -560,9 +560,7 @@ function initPublic(){
   // Capturing prevents button handlers from starting a booking in admin preview.
   document.addEventListener('click',event=>{
     if(!adminPreviewMode)return;
-    if(!event.target.closest('a[href="#booking"],.book-procedure'))return;
-    event.preventDefault();event.stopImmediatePropagation();
-    notify('Esta sessão está em modo de visualização. Volte ao painel para gerenciar atendimentos.','Agendamento desativado');
+    // Na prévia, a navegação é permitida; as operações de reserva seguem bloqueadas.
   },true);
   document.addEventListener('click',event=>{
     if(!event.target.closest('.top'))closePublicMobileMenu();
@@ -580,11 +578,6 @@ function initPublic(){
 
 function renderPublicRoute(){
   const route=routeHash();
-  if(adminPreviewMode&&route==='booking'){
-    location.hash='#catalog';
-    notify('Não é possível agendar utilizando uma conta administrativa.','Modo de visualização');
-    return;
-  }
   if(['admin','admin-login'].includes(route)) return;
   closePublicMobileMenu();
   $$('#publicNav a').forEach(a=>{
@@ -656,7 +649,13 @@ async function promptExistingBookingOrStart(onNew){
   else onNew();
 }
 function openBookingFromNavigation(){
-  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
+  if(adminPreviewMode){
+    booking=newBooking('');
+    stepIndex=0;
+    bookingCalendarIntroOpen=false;
+    if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+    return;
+  }
   // Consultar calendário não descarta automaticamente o rascunho anterior.
   const today=new Date(todayISO()+'T12:00:00');
   bookingCalendarIntro={date:'',time:'',year:today.getFullYear(),month:today.getMonth()};
@@ -699,7 +698,13 @@ function renderCatalog(){
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
 function startBooking(id){
-  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
+  if(adminPreviewMode){
+    booking=newBooking(id);
+    stepIndex=id?1:0;
+    bookingCalendarIntroOpen=false;
+    if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+    return;
+  }
   promptExistingBookingOrStart(()=>openFreshBooking(id))
     .catch(e=>notify(e.message||'Não foi possível iniciar o agendamento.','Agendamento'));
 }
@@ -837,9 +842,14 @@ function renderBooking(){
   $('#stepLabel').textContent=`${stepIndex+1}. ${step.label}`;
   $('#stepDots').innerHTML=s.map((_,i)=>`<i class="dot ${i===stepIndex?'on':''}"></i>`).join('');
   $('#backBtn').classList.toggle('hidden',stepIndex===0);
+  $('#nextBtn').classList.toggle('hidden',adminPreviewMode&&step.id==='date');
   $('#nextBtn').textContent=step.id==='final'?'Enviar solicitação':
     step.id==='client'&&clientHasSavedContact&&!clientContactEditing?'Confirmar e continuar →':'Continuar →';
   $('#bookingBody').innerHTML=renderStep(step.id);
+  if(adminPreviewMode&&step.id==='date'){
+    $('#bookingBody').insertAdjacentHTML('afterbegin','<div class="glass panel" role="status"><strong>Fim da visualização administrativa</strong><p class="muted">Calendário somente para consulta. Não é possível escolher dias ou horários nem avançar para os dados da cliente.</p></div>');
+    $('#bookingBody').querySelectorAll('[data-date],[data-slot],[data-period]').forEach(button=>{button.disabled=true;button.setAttribute('aria-disabled','true');});
+  }
   if(step.id==='date') bindCalendarControls();
   if(step.id==='client'&&(!clientHasSavedContact||clientContactEditing))initBookingPhoneInput();
 }
@@ -965,6 +975,7 @@ function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType
 
 function handleBookingClick(e){
   const t=e.target.closest('button,[data-accessory]'); if(!t) return;
+  if(adminPreviewMode&&(t.dataset.date!==undefined||t.dataset.slot!==undefined||t.dataset.period!==undefined||t.dataset.introDate!==undefined||t.dataset.introSlot!==undefined))return;
   if(bookingCalendarIntroOpen){
     if(t.dataset.introDate!==undefined){bookingCalendarIntro.date=t.dataset.introDate;bookingCalendarIntro.time='';renderBooking();return;}
     if(t.dataset.introSlot!==undefined){bookingCalendarIntro.time=t.dataset.introSlot;renderBooking();return;}
@@ -1043,7 +1054,18 @@ function validateStep(id){
   return '';
 }
 async function nextBookingStep(){
-  if(adminPreviewMode)return notify('A conta administrativa não pode fazer solicitações.','Modo de visualização');
+  if(adminPreviewMode){
+    if(bookingCalendarIntroOpen)return openBookingFromNavigation();
+    const previewSteps=steps(),previewStep=previewSteps[stepIndex];
+    if(!previewStep||previewStep.id==='date'||previewStep.id==='client'||previewStep.id==='anamnesis'||previewStep.id==='consent'||previewStep.id==='final')
+      return notify('A prévia termina no calendário. Nenhuma reserva será criada.','Visualização administrativa');
+    const previewError=validateStep(previewStep.id);
+    if(previewError)return notify(previewError,'Falta uma informação');
+    stepIndex++;
+    if(steps()[stepIndex]?.id==='client')return notify('Prévia limitada ao calendário.','Visualização administrativa');
+    renderBooking();
+    return;
+  }
   if(bookingCalendarIntroOpen)return continueBookingFromCalendarIntro();
   const s=steps(), id=s[stepIndex].id, err=validateStep(id); if(err) return notify(err,'Falta uma informação');
   if(id==='final') return submitRequest();
@@ -1135,6 +1157,7 @@ function initAdmin(){
 
 function showPublic(preview=false){
   adminPreviewMode=!!preview&&sessionStorage.getItem('ddbraids_admin_session')==='1';
+  if(adminPreviewMode){booking=newBooking('');stepIndex=0;bookingCalendarIntroOpen=false;}
   $('#adminRoot').classList.add('hidden');
   $('#publicRoot').classList.remove('hidden');
   $('#publicRoot').classList.toggle('admin-preview',adminPreviewMode);
