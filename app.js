@@ -723,7 +723,7 @@ function steps(){
   s.push({id:'professional',label:'Profissional'});
   if(compatibleMaterials().length) s.push({id:'material',label:'Materiais'});
   s.push({id:'summary',label:'Resumo'});
-  if(!booking.calendarPrefillValidated)s.push({id:'date',label:'Data'});
+  s.push({id:'date',label:'Data e horário'});
   s.push({id:'client',label:'Seus dados'});
   s.push({id:'anamnesis',label:'Anamnese'});
   s.push({id:'consent',label:'Consentimento'});
@@ -835,9 +835,9 @@ function renderBooking(){
     $('#stepDots').innerHTML='';
     $('#backBtn').classList.add('hidden');
     $('#nextBtn').classList.remove('hidden');
-    $('#nextBtn').textContent=adminPreviewMode?'Ver etapas do agendamento →':'Continuar →';
+    $('#nextBtn').textContent='Continuar →';
     $('#bookingBody').innerHTML=renderCalendarIntro();
-    if(adminPreviewMode)$('#bookingBody').insertAdjacentHTML('afterbegin','<div class="availability-warning ok" role="status">Prévia administrativa: calendário demonstrativo. Continue para conferir o catálogo e as etapas, sem reservar horários.</div>');
+    if(adminPreviewMode)$('#bookingBody').insertAdjacentHTML('afterbegin','<div class="availability-warning ok" role="status">Visualização administrativa: escolha data e horário para conferir o fluxo. Nenhuma reserva será feita.</div>');
     return;
   }
   if(bookingPhoneInputInstance){bookingPhoneInputInstance.destroy();bookingPhoneInputInstance=null;}
@@ -846,14 +846,10 @@ function renderBooking(){
   $('#stepLabel').textContent=`${stepIndex+1}. ${step.label}`;
   $('#stepDots').innerHTML=s.map((_,i)=>`<i class="dot ${i===stepIndex?'on':''}"></i>`).join('');
   $('#backBtn').classList.toggle('hidden',stepIndex===0);
-  $('#nextBtn').classList.toggle('hidden',adminPreviewMode&&step.id==='date');
+  $('#nextBtn').classList.toggle('hidden',adminPreviewMode&&['client','anamnesis','consent','final'].includes(step.id));
   $('#nextBtn').textContent=step.id==='final'?'Enviar solicitação':
     step.id==='client'&&clientHasSavedContact&&!clientContactEditing?'Confirmar e continuar →':'Continuar →';
   $('#bookingBody').innerHTML=renderStep(step.id);
-  if(adminPreviewMode&&step.id==='date'){
-    $('#bookingBody').insertAdjacentHTML('afterbegin','<div class="glass panel" role="status"><strong>Fim da visualização administrativa</strong><p class="muted">Calendário somente para consulta. Não é possível escolher dias ou horários nem avançar para os dados da cliente.</p></div>');
-    $('#bookingBody').querySelectorAll('[data-date],[data-slot],[data-period]').forEach(button=>{button.disabled=true;button.setAttribute('aria-disabled','true');});
-  }
   if(step.id==='date') bindCalendarControls();
   if(step.id==='client'&&(!clientHasSavedContact||clientContactEditing))initBookingPhoneInput();
 }
@@ -908,7 +904,7 @@ function renderStep(id){
     const list=activeProfessionals();
     return `<div class="visual-choices">${list.map(x=>visualChoice(x.id,x.name,x.image,booking.professionalId===x.id,'data-professional')).join('')||`<div class="empty-state">Nenhuma profissional disponível.</div>`}</div>`;
   }
-  if(id==='date') return renderDateStep();
+  if(id==='date') return booking.calendarPrefillSource==='calendar'&&!booking.reselectDate ? renderDateConfirmation() : renderDateStep();
   if(id==='client') return renderClientContactStep();
   if(id==='anamnesis') return renderAnamnesisStep();
   if(id==='consent') return `<div class="consent-card"><h2>Ciência e consentimento</h2><p>${esc(db.settings.consentText)}</p><label class="toggle-option"><input type="checkbox" data-consent ${booking.consentAccepted?'checked':''}><span>Li e concordo</span></label></div>`;
@@ -951,6 +947,10 @@ function renderCalendarIntro(){
     <p class="muted">Esta é uma preferência inicial, não uma reserva. Alguns horários podem estar ocupados ou não comportar a duração do procedimento escolhido.</p>`;
 }
 
+function renderDateConfirmation(){
+  const hasSelection=!!booking.date&&!!booking.time;
+  return `<div class="glass nested"><h2>Confirme a data e o horário</h2><p class="muted">Esta é a preferência escolhida no calendário inicial. Não é necessário escolher tudo novamente.</p><div class="summary-grid"><span><b>Data</b>${hasSelection?fmtDate(booking.date):'Não selecionada'}</span><span><b>Horário</b>${esc(booking.time||'—')}</span><span><b>Profissional</b>${esc(getProfessional(booking.professionalId)?.name||'—')}</span></div><div class="actions"><button type="button" class="btn" data-change-booking-date>Alterar data ou horário</button></div><p class="muted">A disponibilidade definitiva é verificada para o serviço e a profissional escolhidos.</p></div>`;
+}
 function renderDateStep(){
   const now=new Date(), year=Number(booking.calendarYear||now.getFullYear()), month=Number(booking.calendarMonth??now.getMonth());
   booking.calendarYear=year; booking.calendarMonth=month;
@@ -979,13 +979,14 @@ function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType
 
 function handleBookingClick(e){
   const t=e.target.closest('button,[data-accessory]'); if(!t) return;
-  if(adminPreviewMode&&(t.dataset.date!==undefined||t.dataset.slot!==undefined||t.dataset.period!==undefined||t.dataset.introDate!==undefined||t.dataset.introSlot!==undefined))return;
+  // Seleções de data e horário são permitidas na prévia: só o envio é bloqueado.
   if(bookingCalendarIntroOpen){
     if(t.dataset.introDate!==undefined){bookingCalendarIntro.date=t.dataset.introDate;bookingCalendarIntro.time='';renderBooking();return;}
     if(t.dataset.introSlot!==undefined){bookingCalendarIntro.time=t.dataset.introSlot;renderBooking();return;}
     if(t.dataset.introCal){const d=new Date(bookingCalendarIntro.year,bookingCalendarIntro.month+(t.dataset.introCal==='next'?1:-1),1);bookingCalendarIntro.year=d.getFullYear();bookingCalendarIntro.month=d.getMonth();renderBooking();return;}
     return;
   }
+  if(t.hasAttribute('data-change-booking-date')){booking.reselectDate=true;booking.calendarPrefillValidated=false;renderBooking();return;}
   if(t.hasAttribute('data-client-edit')){clientContactEditing=true;renderBooking();return;}
   if(t.dataset.accessory!==undefined){ const id=t.dataset.accessory; booking.accessoryIds=booking.accessoryIds.includes(id)?booking.accessoryIds.filter(x=>x!==id):[...booking.accessoryIds,id]; renderBooking(); return; }
   if(t.dataset.procedure!==undefined){const old=booking;booking=newBooking(t.dataset.procedure);if(old.calendarPrefillSource==='calendar'){booking.date=old.date;booking.time=old.time;booking.period=old.period;booking.calendarPrefillSource='calendar';}stepIndex=0;renderBooking();return; }
@@ -999,7 +1000,7 @@ function handleBookingClick(e){
   if(t.dataset.color!==undefined){const v=t.dataset.color;booking.color=booking.color===v&&!currentOptions(booking).required?.color?'':v;renderBooking();return;}
   if(t.dataset.provider!==undefined){const v=t.dataset.provider;booking.materialProvider=v;renderBooking();return;}
   if(t.dataset.professional!==undefined){booking.professionalId=t.dataset.professional;invalidateBookingCalendarSelection();renderBooking();return;}
-  if(t.dataset.date!==undefined){booking.date=t.dataset.date;booking.time='';booking.period='';booking.calendarPrefillSource='';booking.calendarPrefillValidated=false;loadRealSlotsForBooking().then(renderBooking).catch(e=>{console.error(e);notify('Não foi possível consultar os horários desta data.');renderBooking();});renderBooking();return;}
+  if(t.dataset.date!==undefined){booking.date=t.dataset.date;booking.time='';booking.period='';booking.reselectDate=true;booking.calendarPrefillValidated=false;loadRealSlotsForBooking().then(renderBooking).catch(e=>{console.error(e);notify('Não foi possível consultar os horários desta data.');renderBooking();});renderBooking();return;}
   if(t.dataset.slot!==undefined){booking.time=t.dataset.slot;booking.period=t.dataset.slot;renderBooking();return;}
   if(t.dataset.period!==undefined){booking.period=t.dataset.period;renderBooking();return;}
   if(t.dataset.hairChange!==undefined){booking.hairChange=t.dataset.hairChange; if(booking.hairChange==='yes') booking.anamnesis=emptyAnamnesis(); renderBooking();return;}
@@ -1060,56 +1061,37 @@ function validateStep(id){
 async function nextBookingStep(){
   if(adminPreviewMode){
     if(bookingCalendarIntroOpen){
-      // O calendário inicial é apenas uma visualização. Não exige horário,
-      // não reserva vagas e não escreve dados de clientes no backend.
-      booking=newBooking('');stepIndex=0;bookingCalendarIntroOpen=false;
-      renderBooking();return;
+      if(!bookingCalendarIntro.date||!bookingCalendarIntro.time)return notify('Escolha a data e o horário para conferir o agendamento.','Prévia');
+      booking=newBooking('');
+      booking.date=bookingCalendarIntro.date;booking.time=bookingCalendarIntro.time;booking.period=booking.time;
+      booking.calendarPrefillSource='calendar';booking.calendarPrefillValidated=false;
+      stepIndex=0;bookingCalendarIntroOpen=false;renderBooking();return;
     }
     const previewSteps=steps(),previewStep=previewSteps[stepIndex];
-    if(!previewStep||previewStep.id==='date'||previewStep.id==='client'||previewStep.id==='anamnesis'||previewStep.id==='consent'||previewStep.id==='final')
+    if(!previewStep||previewStep.id==='client'||previewStep.id==='anamnesis'||previewStep.id==='consent'||previewStep.id==='final')
       return notify('A prévia termina no calendário. Nenhuma reserva será criada.','Visualização administrativa');
-    const previewError=previewStep.id==='summary'?'':validateStep(previewStep.id);
+    const previewError=['summary','date'].includes(previewStep.id)?'':validateStep(previewStep.id);
     if(previewError)return notify(previewError,'Falta uma informação');
+    if(previewStep.id==='date')return notify('A visualização administrativa termina na confirmação da data e do horário.','Prévia');
     stepIndex++;
-    if(steps()[stepIndex]?.id==='client')return notify('Prévia limitada ao calendário.','Visualização administrativa');
+    if(steps()[stepIndex]?.id==='client')return notify('Prévia limitada à etapa de data.','Visualização administrativa');
     renderBooking();
     return;
   }
   if(bookingCalendarIntroOpen)return continueBookingFromCalendarIntro();
   const s=steps(), id=s[stepIndex].id, err=validateStep(id); if(err) return notify(err,'Falta uma informação');
   if(id==='final') return submitRequest();
-  if(id==='summary'&&booking.calendarPrefillSource==='calendar'){
-    let matching=false;
-    try{
-      const real=await loadRealSlotsForBooking();
-      matching=real.some(slot=>slot.time===booking.time);
-    }catch(e){console.error('Falha ao verificar preferência:',e);}
-    if(matching){
-      try{
-        const session=await ensureClientAuth();
-        if(!session)return;
-        await loadVerifiedClientContact(session);
-      }catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
-      booking.calendarPrefillValidated=true;
-      stepIndex=steps().findIndex(step=>step.id==='client');
-      renderBooking();
-      return;
-    }
-    booking.calendarPrefillSource='';booking.calendarPrefillValidated=false;
-    booking.time='';booking.period='';
-    notify('O horário de preferência não está disponível para este atendimento. Escolha outro horário no calendário.','Horário indisponível');
-  }
   if(id==='date'){
     try{
       const real=await loadRealSlotsForBooking();
-      if(!real.length||(!isMaintenanceBooking(booking)&&!real.some(slot=>slot.time===booking.time)))
-        return notify('Este horário não está mais disponível. Selecione outro.','Horário indisponível');
-    }catch(e){return notify('Não foi possível conferir este horário. Tente novamente.','Agenda indisponível');}
-    try{
-      const session=await ensureClientAuth();
-      if(!session)return;
-      await loadVerifiedClientContact(session);
-    }catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
+      if(!real.length||(!isMaintenanceBooking(booking)&&!real.some(slot=>slot.time===booking.time))){
+        booking.reselectDate=true;booking.calendarPrefillValidated=false;
+        notify('O horário escolhido não está disponível. Escolha outra data ou horário.','Disponibilidade');
+        renderBooking();return;
+      }
+    }catch(e){console.error('Consulta de disponibilidade falhou:',e);return notify('Não foi possível verificar os horários. Tente novamente.','Agenda');}
+    try{const session=await ensureClientAuth();if(!session)return;await loadVerifiedClientContact(session);}
+    catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
   }
   if(id==='client'){
     try{

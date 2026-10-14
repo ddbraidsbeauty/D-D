@@ -123,3 +123,13 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 .visual-choice img{display:block;width:100%;height:210px;max-height:210px;aspect-ratio:auto;object-fit:cover;object-position:center 25%}
 @media(max-width:700px){.visual-choices{grid-template-columns:minmax(0,1fr)}.visual-choice img{height:180px;max-height:180px;aspect-ratio:auto}}
 .material-config-note{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--solid)}
+
+/* Padronização global dos cards fotográficos 4:5. A imagem não é cortada. */
+#homePros .pro{width:100%;aspect-ratio:4/5;height:auto}
+#homePros .pro img{width:100%;height:100%;object-fit:contain;object-position:center}
+#catalogCards .card img,#featured .card img,.visual-choice img{display:block;width:100%;height:auto;max-height:none;aspect-ratio:4/5;object-fit:contain;object-position:center;background:var(--solid)}
+.cards{grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),300px));justify-content:center}
+.visual-choices{grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),280px));justify-content:center}
+.visual-choice-copy{min-height:66px;align-items:center;flex-wrap:wrap}
+.visual-choice strong{overflow-wrap:anywhere}
+@media(max-width:700px){.cards,.visual-choices{grid-template-columns:minmax(0,300px);justify-content:center}}
