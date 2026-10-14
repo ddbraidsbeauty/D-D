@@ -622,7 +622,7 @@ async function openBookingFromNavigation(){
   // A user can dismiss the modal with X or by clicking its backdrop.
   if(bookingEntryChoiceOpen&&!$('#modal').classList.contains('open'))bookingEntryChoiceOpen=false;
   if(bookingEntryChoiceOpen)return;
-  const inProgress=!!booking.procedureId&&stepIndex>0;
+  const inProgress=!!booking.procedureId;
   let session=null,stored=null;
   if(!inProgress){
     try{session=await DDB.session();stored=readPendingBookingDraft(session);}
@@ -656,7 +656,11 @@ function renderCatalog(){
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
 function startBooking(id){
-  const begin=()=>{booking=newBooking(id);stepIndex=1;clearPendingBookingDraft();location.hash='#booking';renderBooking();};
+  const begin=()=>{
+    booking=newBooking(id);stepIndex=1;
+    currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
+    clearPendingBookingDraft();location.hash='#booking';renderBooking();
+  };
   if(booking.procedureId&&stepIndex>0)
     askConfirm({title:'Trocar de atendimento?',message:'Suas escolhas anteriores serão substituídas pelo novo procedimento.',confirmText:'Trocar procedimento',onConfirm:begin});
   else begin();
@@ -697,6 +701,8 @@ function compatibleAccessories(){
 async function loadVerifiedClientContact(session){
   const userId=session?.user?.id;
   if(!userId)throw new Error('Entre na sua conta antes de continuar.');
+  // Preserve edits when the client goes back to the date step and returns.
+  if(currentClientContactOwnerId===userId&&(booking.clientName||booking.phone))return;
   if(currentClientContactOwnerId!==userId){
     booking.clientName='';booking.phone='';booking.email='';
     clientHasSavedContact=false;clientContactEditing=true;
