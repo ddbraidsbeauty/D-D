@@ -110,9 +110,21 @@ async function loadRealSlotsForBooking(){
   return window.__ddbSlots[key];
 }
 
-async function ensureClientAuth(){const s=await DDB.session();if(s)return s;const ok=await authModal(booking.email||'');if(!ok)return null;return DDB.session();}
+async function ensureClientAuth(){
+  const previous=await DDB.session();
+  if(previous){
+    if(await DDB.isAdmin())throw new Error('Esta conta é administrativa e não pode solicitar agendamentos.');
+    return previous;
+  }
+  const ok=await authModal(booking.email||'');
+  if(!ok)return null;
+  const current=await DDB.session();
+  if(current&&await DDB.isAdmin())throw new Error('Esta conta é administrativa e não pode solicitar agendamentos.');
+  return current;
+}
 let bookingSubmissionPending=false;
 async function submitRequest(){
+ if(adminPreviewMode)return notify('Agendamentos estão desativados neste modo administrativo.','Modo de visualização');
  if(bookingSubmissionPending)return;
  if(booking.partialSubmissionId)return notify('Esta solicitação já existe. Acesse Meus agendamentos e use Completar ficha capilar, sem criar outra solicitação.','Atendimento pendente');
  bookingSubmissionPending=true;
@@ -244,6 +256,12 @@ function clientCancellationError(error){
 }
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
+ if(adminPreviewMode){
+   controls?.replaceChildren();
+   box.innerHTML='<div class="glass panel"><h2>Visualização administrativa</h2><p class="muted">Você está visualizando o site como visitante. Para consultar clientes ou gerenciar atendimentos, volte ao painel administrativo.</p><button class="btn gold" type="button" id="returnAdminFromAccount">Voltar ao painel</button></div>';
+   $('#returnAdminFromAccount').onclick=showAdmin;
+   return;
+ }
  // Clear account-only controls before checking the current session.
  if(controls)controls.replaceChildren();
  const s=await DDB.session();

@@ -173,6 +173,13 @@ function initPublic(){
     button.setAttribute('aria-expanded',String(!expanded));
     button.setAttribute('aria-label',expanded?'Abrir menu':'Fechar menu');
   });
+  // Capturing prevents button handlers from starting a booking in admin preview.
+  document.addEventListener('click',event=>{
+    if(!adminPreviewMode)return;
+    if(!event.target.closest('a[href="#booking"],.book-procedure'))return;
+    event.preventDefault();event.stopImmediatePropagation();
+    notify('Esta sessão está em modo de visualização. Volte ao painel para gerenciar atendimentos.','Agendamento desativado');
+  },true);
   document.addEventListener('click',event=>{
     if(!event.target.closest('.top'))closePublicMobileMenu();
     const link=event.target.closest('a[href="#booking"]');
@@ -189,6 +196,11 @@ function initPublic(){
 
 function renderPublicRoute(){
   const route=routeHash();
+  if(adminPreviewMode&&route==='booking'){
+    location.hash='#catalog';
+    notify('Não é possível agendar utilizando uma conta administrativa.','Modo de visualização');
+    return;
+  }
   if(['admin','admin-login'].includes(route)) return;
   closePublicMobileMenu();
   $$('#publicNav a').forEach(a=>{
@@ -260,6 +272,7 @@ async function promptExistingBookingOrStart(onNew){
   else onNew();
 }
 function openBookingFromNavigation(){
+  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
   // Consultar calendário não descarta automaticamente o rascunho anterior.
   const today=new Date(todayISO()+'T12:00:00');
   bookingCalendarIntro={date:'',time:'',year:today.getFullYear(),month:today.getMonth()};
@@ -302,6 +315,7 @@ function renderCatalog(){
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
 function startBooking(id){
+  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
   promptExistingBookingOrStart(()=>openFreshBooking(id))
     .catch(e=>notify(e.message||'Não foi possível iniciar o agendamento.','Agendamento'));
 }
@@ -645,6 +659,7 @@ function validateStep(id){
   return '';
 }
 async function nextBookingStep(){
+  if(adminPreviewMode)return notify('A conta administrativa não pode fazer solicitações.','Modo de visualização');
   if(bookingCalendarIntroOpen)return continueBookingFromCalendarIntro();
   const s=steps(), id=s[stepIndex].id, err=validateStep(id); if(err) return notify(err,'Falta uma informação');
   if(id==='final') return submitRequest();

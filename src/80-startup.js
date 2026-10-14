@@ -28,6 +28,8 @@ $('#modal').addEventListener('click',e=>{ if(e.target.id==='modal') closeModal()
 
 initPublic();
 initAdmin();
+// Restore the actual Supabase administrative role, not a browser flag.
+restoreAdminSessionOnLoad().catch(e=>console.error('Admin restore failed',e));
 renderHome();
 renderCatalog();
 bootstrapBackendPublic();
