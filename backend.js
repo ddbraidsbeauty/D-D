@@ -63,10 +63,11 @@
       const {error}=await sb.storage.from('client-private').upload(path,new Blob([bytes],{type:m[1]}),{upsert:false}); if(error) throw error; return path;
     },
     async availableSlots(professionalId,serviceId,methodId,variationId,date){ return rpc('public_available_slots',{p_professional_id:professionalId,p_service_id:serviceId,p_method_id:methodId||null,p_variation_id:variationId||null,p_date:date}); },
-    async createBooking(payload){ if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required'); return rpc('create_booking_request_v3',payload); },
+    async createBooking(payload){ if(await this.isAdmin()) throw new Error('admin_booking_forbidden'); if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required'); return rpc('create_booking_request_v3',payload); },
     normalizeHair(answers){const a=answers||{};return {hair_type:a.hair_type??a.hairType??'',pattern:String(a.pattern??a.classification??'').trim().toUpperCase(),natural_color:a.natural_color??a.naturalColor??'',lightening_background:a.lightening_background??a.lighteningBackground??'',density:a.density??'',texture:a.texture??'',characteristic:a.characteristic??'',resistance:a.resistance??'',porosity:a.porosity??'',elasticity:a.elasticity??'',recent_chemistry:a.recent_chemistry??a.recentChemistry??'',chemistry_details:a.chemistry_details??a.chemistryDetails??'',frequent_heat:a.frequent_heat??a.heatUse??[],problems:a.problems??[],other_problems:a.other_problems??a.otherProblems??''};},
     async saveHairProfile(appointmentId,answers){return rpc('save_client_hair_profile',{p_appointment_id:appointmentId,p_answers:this.normalizeHair(answers)});},
     async submitBooking(payload,answers,reuse=false){
+      if(await this.isAdmin()) throw new Error('admin_booking_forbidden');
       if(payload.p_consent_accepted!==true) throw new Error('standard_consent_required');
       // This RPC makes the appointment AND its hair profile one database transaction.
       // DO NOT fall back to create_booking_request_v3: that old 2-step path
