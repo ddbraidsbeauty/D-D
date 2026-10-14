@@ -557,13 +557,6 @@ function initPublic(){
     button.setAttribute('aria-expanded',String(!expanded));
     button.setAttribute('aria-label',expanded?'Abrir menu':'Fechar menu');
   });
-  // Capturing prevents button handlers from starting a booking in admin preview.
-  document.addEventListener('click',event=>{
-    if(!adminPreviewMode)return;
-    if(!event.target.closest('a[href="#booking"],.book-procedure'))return;
-    event.preventDefault();event.stopImmediatePropagation();
-    notify('Esta sessão está em modo de visualização. Volte ao painel para gerenciar atendimentos.','Agendamento desativado');
-  },true);
   document.addEventListener('click',event=>{
     if(!event.target.closest('.top'))closePublicMobileMenu();
     const link=event.target.closest('a[href="#booking"]');
@@ -580,11 +573,6 @@ function initPublic(){
 
 function renderPublicRoute(){
   const route=routeHash();
-  if(adminPreviewMode&&route==='booking'){
-    location.hash='#catalog';
-    notify('Não é possível agendar utilizando uma conta administrativa.','Modo de visualização');
-    return;
-  }
   if(['admin','admin-login'].includes(route)) return;
   closePublicMobileMenu();
   $$('#publicNav a').forEach(a=>{
@@ -656,7 +644,8 @@ async function promptExistingBookingOrStart(onNew){
   else onNew();
 }
 function openBookingFromNavigation(){
-  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
+  // Admins may inspect the introductory calendar, but cannot select a time or continue.
+  if(adminPreviewMode){booking=newBooking();stepIndex=0;}
   // Consultar calendário não descarta automaticamente o rascunho anterior.
   const today=new Date(todayISO()+'T12:00:00');
   bookingCalendarIntro={date:'',time:'',year:today.getFullYear(),month:today.getMonth()};
@@ -699,7 +688,12 @@ function renderCatalog(){
 }
 function bindPublicCards(){ $$('.book-procedure').forEach(b=>b.onclick=()=>startBooking(b.dataset.id)); }
 function startBooking(id){
-  if(adminPreviewMode)return notify('Agendamentos ficam desativados na visualização administrativa.','Modo de visualização');
+  if(adminPreviewMode){
+    // Ephemeral preview: do not clear real drafts, authenticate, or write to the backend.
+    booking=newBooking(id);stepIndex=id?1:0;bookingCalendarIntroOpen=false;
+    if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
+    return;
+  }
   promptExistingBookingOrStart(()=>openFreshBooking(id))
     .catch(e=>notify(e.message||'Não foi possível iniciar o agendamento.','Agendamento'));
 }
@@ -827,7 +821,8 @@ function renderBooking(){
     $('#stepLabel').textContent='Escolha data e horário';
     $('#stepDots').innerHTML='';
     $('#backBtn').classList.add('hidden');
-    $('#nextBtn').textContent='Continuar →';
+    $('#nextBtn').textContent=adminPreviewMode?'Somente consulta':'Continuar →';
+    $('#nextBtn').disabled=adminPreviewMode;
     $('#bookingBody').innerHTML=renderCalendarIntro();
     return;
   }
@@ -837,7 +832,9 @@ function renderBooking(){
   $('#stepLabel').textContent=`${stepIndex+1}. ${step.label}`;
   $('#stepDots').innerHTML=s.map((_,i)=>`<i class="dot ${i===stepIndex?'on':''}"></i>`).join('');
   $('#backBtn').classList.toggle('hidden',stepIndex===0);
-  $('#nextBtn').textContent=step.id==='final'?'Enviar solicitação':
+  $('#nextBtn').disabled=adminPreviewMode&&step.id==='date';
+  $('#nextBtn').textContent=adminPreviewMode&&step.id==='date'?'Somente consulta':
+    step.id==='final'?'Enviar solicitação':
     step.id==='client'&&clientHasSavedContact&&!clientContactEditing?'Confirmar e continuar →':'Continuar →';
   $('#bookingBody').innerHTML=renderStep(step.id);
   if(step.id==='date') bindCalendarControls();
@@ -930,10 +927,10 @@ function renderCalendarIntro(){
   }
   const times=calendarIntroSlots(c.date);
   if(c.time&&!times.includes(c.time))c.time='';
-  return `<div class="selection-context"><b>Quando você gostaria de vir?</b><span>Escolha uma data e um horário de preferência. A disponibilidade será conferida após selecionar a profissional e o procedimento.</span></div>
+  return `<div class="selection-context"><b>Quando você gostaria de vir?</b><span>${adminPreviewMode?'Consulte datas e horários previstos. Não é possível selecionar horários ou solicitar agendamentos neste modo.':'Escolha uma data e um horário de preferência. A disponibilidade será conferida após selecionar a profissional e o procedimento.'}</span></div>
     <div class="calendar-shell"><div class="calendar-head"><button type="button" class="btn" data-intro-cal="prev">‹</button><h2>${new Date(year,month,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><button type="button" class="btn" data-intro-cal="next">›</button></div>
     <div class="weekday"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div><div class="calgrid">${cells.join('')}</div></div>
-    <fieldset><legend>Horário de preferência *</legend><div class="chips">${c.date?(times.length?['Manhã','Tarde','Noite'].map(period=>{const group=times.filter(t=>slotPeriod(t)===period);return group.length?`<div class="slot-period"><b>${period}</b><div class="chips">${group.map(t=>`<button type="button" class="chip ${c.time===t?'on':''}" data-intro-slot="${t}">${t}</button>`).join('')}</div></div>`:''}).join(''):'<span class="muted">Nenhum horário previsto para esse dia. Escolha outra data.</span>'):'<span class="muted">Selecione um dia para consultar as faixas de horário.</span>'}</div></fieldset>
+    <fieldset><legend>Horário de preferência *</legend><div class="chips">${c.date?(times.length?['Manhã','Tarde','Noite'].map(period=>{const group=times.filter(t=>slotPeriod(t)===period);return group.length?`<div class="slot-period"><b>${period}</b><div class="chips">${group.map(t=>`<button type="button" class="chip ${c.time===t?'on':''}" data-intro-slot="${t}" ${adminPreviewMode?'disabled title="Somente consulta"':''}>${t}</button>`).join('')}</div></div>`:''}).join(''):'<span class="muted">Nenhum horário previsto para esse dia. Escolha outra data.</span>'):'<span class="muted">Selecione um dia para consultar as faixas de horário.</span>'}</div></fieldset>
     <p class="muted">Esta é uma preferência inicial, não uma reserva. Alguns horários podem estar ocupados ou não comportar a duração do procedimento escolhido.</p>`;
 }
 
@@ -945,7 +942,7 @@ function renderDateStep(){
   for(let d=1;d<=days;d++){ const iso=`${year}-${String(month+1).padStart(2,'0')}-${String(d).padStart(2,'0')}`; const blocked=dateBlocked(booking.professionalId,iso,isMaintenanceBooking(booking),null,{publicCheck:true}); const past=iso<todayISO(); const state=publicAvailabilityState(booking.professionalId,iso); const disabled=blocked||past||state==='off'||state==='full'; cells.push(`<button type="button" class="day agenda-state ${state} ${booking.date===iso?'selected':''} ${disabled?'disabled':''}" ${disabled?'disabled':''} data-date="${iso}">${d}</button>`); }
   const slots=booking.date?(window.__ddbSlots?.[`${booking.professionalId}|${bookingService(booking)?.id}|${isMaintenanceBooking(booking)?'':(booking.methodId||'')}|${isMaintenanceBooking(booking)?'':(booking.variationId||'')}|${booking.date}`]||[]):[];
   if(booking.time&&!slots.some(x=>x.time===booking.time))booking.time='';
-  return `<div class="calendar-shell"><div class="calendar-head"><button class="btn" type="button" data-cal="prev">‹</button><h2>${new Date(year,month,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><button class="btn" type="button" data-cal="next">›</button></div><div class="weekday"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div><div class="calgrid">${cells.join('')}</div><div class="calendar-legend"><span><i class="legend-dot available"></i>Disponível</span><span><i class="legend-dot partial"></i>Parcialmente ocupado</span><span><i class="legend-dot full"></i>Lotado</span><span><i class="legend-dot off"></i>Indisponível</span></div></div>${isMaintenanceBooking(booking)?`<p class="muted">A manutenção ocupa o dia inteiro da profissional.</p>`:`<fieldset><legend>Horário *</legend><div class="chips">${booking.date?(slots.length?['Manhã','Tarde','Noite'].map(period=>{const group=slots.filter(x=>slotPeriod(x.time)===period);return group.length?`<div class="slot-period"><b>${period}</b><div class="chips">${group.map(x=>`<button type="button" class="chip ${booking.time===x.time?'on':''}" data-slot="${x.time}">${x.time}</button>`).join('')}</div></div>`:''}).join(''):'<span class="muted">Nenhum horário disponível para este atendimento nessa data.</span>'):'<span class="muted">Selecione uma data disponível.</span>'}</div></fieldset>`}`;
+  return `<div class="calendar-shell"><div class="calendar-head"><button class="btn" type="button" data-cal="prev">‹</button><h2>${new Date(year,month,1).toLocaleDateString('pt-BR',{month:'long',year:'numeric'})}</h2><button class="btn" type="button" data-cal="next">›</button></div><div class="weekday"><span>Seg</span><span>Ter</span><span>Qua</span><span>Qui</span><span>Sex</span><span>Sáb</span><span>Dom</span></div><div class="calgrid">${cells.join('')}</div><div class="calendar-legend"><span><i class="legend-dot available"></i>Disponível</span><span><i class="legend-dot partial"></i>Parcialmente ocupado</span><span><i class="legend-dot full"></i>Lotado</span><span><i class="legend-dot off"></i>Indisponível</span></div></div>${isMaintenanceBooking(booking)?`<p class="muted">A manutenção ocupa o dia inteiro da profissional.</p>`:`<fieldset><legend>Horário *</legend><div class="chips">${booking.date?(slots.length?['Manhã','Tarde','Noite'].map(period=>{const group=slots.filter(x=>slotPeriod(x.time)===period);return group.length?`<div class="slot-period"><b>${period}</b><div class="chips">${group.map(x=>`<button type="button" class="chip ${booking.time===x.time?'on':''}" data-slot="${x.time}" ${adminPreviewMode?'disabled title="Somente consulta"':''}>${x.time}</button>`).join('')}</div></div>`:''}).join(''):'<span class="muted">Nenhum horário disponível para este atendimento nessa data.</span>'):'<span class="muted">Selecione uma data disponível.</span>'}</div></fieldset>`}`;
 }
 function bindCalendarControls(){ /* event delegation handles controls */ }
 
@@ -965,6 +962,9 @@ function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType
 
 function handleBookingClick(e){
   const t=e.target.closest('button,[data-accessory]'); if(!t) return;
+  // Do not permit slot choices in preview even if click events are dispatched manually.
+  if(adminPreviewMode&&(t.dataset.introSlot!==undefined||t.dataset.slot!==undefined||t.dataset.period!==undefined))
+    return notify('Horários disponíveis apenas para consulta neste modo.','Visualização administrativa');
   if(bookingCalendarIntroOpen){
     if(t.dataset.introDate!==undefined){bookingCalendarIntro.date=t.dataset.introDate;bookingCalendarIntro.time='';renderBooking();return;}
     if(t.dataset.introSlot!==undefined){bookingCalendarIntro.time=t.dataset.introSlot;renderBooking();return;}
@@ -1043,9 +1043,17 @@ function validateStep(id){
   return '';
 }
 async function nextBookingStep(){
-  if(adminPreviewMode)return notify('A conta administrativa não pode fazer solicitações.','Modo de visualização');
+  if(adminPreviewMode&&bookingCalendarIntroOpen)
+    return notify('O calendário é a última tela disponível para consulta.','Visualização administrativa');
   if(bookingCalendarIntroOpen)return continueBookingFromCalendarIntro();
   const s=steps(), id=s[stepIndex].id, err=validateStep(id); if(err) return notify(err,'Falta uma informação');
+  if(adminPreviewMode){
+    const dateIndex=s.findIndex(step=>step.id==='date');
+    if(id==='date'||dateIndex===-1||stepIndex>=dateIndex)
+      return notify('Fim da visualização administrativa. Nenhum horário foi reservado.','Somente consulta');
+    // Preview advances local UI only, without authentication, submission or persistence.
+    stepIndex++;renderBooking();return;
+  }
   if(id==='final') return submitRequest();
   if(id==='summary'&&booking.calendarPrefillSource==='calendar'){
     let matching=false;
@@ -1144,6 +1152,7 @@ function showPublic(preview=false){
 }
 function showAdmin(){
   if(sessionStorage.getItem('ddbraids_admin_session')!=='1'){location.hash='#account';return;}
+  if(adminPreviewMode){booking=newBooking();stepIndex=0;bookingCalendarIntroOpen=false;}
   adminPreviewMode=false;
   $('#adminPreviewBanner').classList.add('hidden');
   $('#publicRoot').classList.remove('admin-preview');
