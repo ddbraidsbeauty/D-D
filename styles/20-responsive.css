@@ -35,7 +35,7 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
   .panel{padding:clamp(14px,3vw,19px);margin:clamp(14px,3vw,22px) 0}
   .hero{gap:clamp(20px,5vw,32px)}
   .heroimg{height:clamp(300px,58vw,440px)}
-  .pro{height:clamp(300px,58vw,400px)}
+  .pro{height:auto;aspect-ratio:4/5}
   .cardbody{padding:clamp(15px,3vw,22px)}
   .cardbody h3{font-size:clamp(21px,4vw,25px)}
   .modal{padding:max(10px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
@@ -57,7 +57,7 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
   .float{left:10px;bottom:10px;padding:10px 13px}
   .cards,.visual-choices{gap:14px}
   .card,.visual-choice{border-radius:18px}
-  .card img,.visual-choice img{aspect-ratio:16/11;max-height:clamp(190px,58vw,280px);object-position:center}
+  .card img,.visual-choice img{aspect-ratio:4/5;height:auto;max-height:none;object-fit:contain}
   .visual-choice{display:grid;grid-template-columns:1fr;width:100%;overflow:hidden}
   .visual-choice-copy{padding:12px 14px;min-height:54px}
   .visual-choice strong{font-size:17px}
@@ -103,7 +103,7 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 
 @media(min-width:701px) and (max-width:1100px){
   .cards,.visual-choices{grid-template-columns:repeat(2,minmax(0,1fr))}
-  .card img,.visual-choice img{max-height:360px}
+  .card img,.visual-choice img{max-height:none}
 }
 
 @media(min-width:1500px){
@@ -120,6 +120,6 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 
 /* RC8: tiles must not stretch to full row when there is a single variation. */
 .visual-choices{grid-template-columns:repeat(auto-fill,minmax(min(100%,240px),280px));justify-content:start}
-.visual-choice img{display:block;width:100%;height:210px;max-height:210px;aspect-ratio:auto;object-fit:cover;object-position:center 25%}
-@media(max-width:700px){.visual-choices{grid-template-columns:minmax(0,1fr)}.visual-choice img{height:180px;max-height:180px;aspect-ratio:auto}}
+.visual-choice img{display:block;width:100%;height:auto;max-height:none;aspect-ratio:4/5;object-fit:contain}
+@media(max-width:700px){.visual-choices{grid-template-columns:minmax(0,1fr)}}
 .material-config-note{padding:12px 14px;border:1px solid var(--line);border-radius:12px;background:var(--solid)}
