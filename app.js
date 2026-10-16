@@ -392,6 +392,7 @@ let currentClientHairProfile = null;
 let currentClientHairProfileOwnerId = null;
 let currentClientContactOwnerId = null;
 let clientHasSavedContact = false;
+let clientHadPreviousContact = false;
 let clientContactEditing = true;
 let bookingPhoneInputInstance = null;
 let bookingEntryChoiceOpen = false;
@@ -531,6 +532,7 @@ function initPublic(){
       currentClientHairProfileOwnerId=null;
       currentClientContactOwnerId=null;
       clientHasSavedContact=false;
+      clientHadPreviousContact=false;
       clientContactEditing=true;
     }
     if(event==='PASSWORD_RECOVERY'){
@@ -616,7 +618,7 @@ function openFreshBooking(procedureId='',prefill=null){
     const month=new Date(prefill.date+'T12:00:00');
     booking.calendarYear=month.getFullYear();booking.calendarMonth=month.getMonth();
   }
-  currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
+  currentClientContactOwnerId=null;clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
   clearPendingBookingDraft();
   if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
 }
@@ -779,18 +781,21 @@ async function loadVerifiedClientContact(session){
   if(currentClientContactOwnerId===userId&&(booking.clientName||booking.phone))return;
   if(currentClientContactOwnerId!==userId){
     booking.clientName='';booking.phone='';booking.email='';
-    clientHasSavedContact=false;clientContactEditing=true;
+    clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
   }
   const appointments=(await DDB.myAppointments()).filter(a=>a.client_id===userId);
   const recent=appointments[0]||null;
   const saved=session.user.user_metadata?.ddb_client_contact||{};
-  const previousName=String(saved.name||recent?.client_name||session.user.user_metadata?.full_name||'');
-  const previousPhone=String(saved.phone||recent?.client_phone||'');
-  const previousEmail=String(saved.email||recent?.client_email||session.user.email||'');
+  // Current booking records use *_snapshot fields. An old booking does not
+  // prove that its saved contact data are valid.
+  const has=key=>Object.prototype.hasOwnProperty.call(saved,key);
+  const previousName=String(has('name')?saved.name:(recent?.client_name_snapshot||recent?.client_name||session.user.user_metadata?.full_name||''));
+  const previousPhone=String(has('phone')?saved.phone:(recent?.client_phone_snapshot||recent?.client_phone||''));
   booking.clientName=previousName==='Cliente'?'':previousName;
   booking.phone=canonicalContactPhone(previousPhone);
-  booking.email=previousEmail;
-  clientHasSavedContact=!!(recent||saved.phone);
+  booking.email=String(session.user.email||'');
+  clientHadPreviousContact=!!(recent||has('name')||has('phone'));
+  clientHasSavedContact=!!(booking.clientName.trim()&&bookingContactPhoneValid());
   clientContactEditing=!clientHasSavedContact;
   currentClientContactOwnerId=userId;
 }
@@ -805,7 +810,8 @@ function renderClientContactStep(){
   return `<div class="form-grid client-contact-form">
     <label>Nome completo *<input data-booking-field="clientName" autocomplete="name" value="${esc(booking.clientName)}"></label>
     <label>WhatsApp *<input type="tel" id="bookingPhoneInput" data-booking-field="phone" autocomplete="tel" inputmode="tel" aria-label="WhatsApp com DDI e país" value="${esc(booking.phone)}"></label>
-    <label>E-mail de contato<input type="email" data-booking-field="email" autocomplete="email" value="${esc(booking.email)}"><span class="contact-help">O e-mail de contato não altera o login da conta.</span></label>
+    <label>E-mail da conta<input type="email" value="${esc(booking.email)}" readonly><span class="contact-help">Altere o e-mail com sua senha no Portal Cliente.</span></label>
+    ${clientHadPreviousContact?'<label>Senha atual da conta *<input type="password" id="bookingContactPassword" autocomplete="current-password" required><span class="contact-help">Necessária para atualizar dados salvos.</span></label>':''}
   </div>`;
 }
 function initBookingPhoneInput(){
@@ -849,13 +855,18 @@ async function saveVerifiedClientContact(session){
   if(!userId||currentClientContactOwnerId!==userId)throw new Error('A conta mudou. Confira os dados e entre novamente.');
   const identity=await DDB.sb.auth.getUser();
   if(identity.error||identity.data?.user?.id!==userId)throw new Error('Sua sessão mudou. Entre novamente.');
-  const contact={name:booking.clientName.trim(),phone:booking.phone,email:booking.email.trim()};
+  if(clientHadPreviousContact&&clientContactEditing){
+    const password=$('#bookingContactPassword')?.value||'';
+    if(!password)throw new Error('Informe sua senha atual para alterar seus dados.');
+    await verifyClientAccountPassword(password,userId);
+  }
+  const contact={name:booking.clientName.trim(),phone:booking.phone,email:identity.data.user.email||''};
   const previous=identity.data.user.user_metadata?.ddb_client_contact||{};
   if(previous.name!==contact.name||previous.phone!==contact.phone||previous.email!==contact.email){
     const {error}=await DDB.sb.auth.updateUser({data:{ddb_client_contact:contact}});
     if(error)throw error;
   }
-  clientHasSavedContact=true;clientContactEditing=false;
+  clientHasSavedContact=true;clientHadPreviousContact=true;clientContactEditing=false;
 }
 
 function renderBooking(){
@@ -1000,8 +1011,26 @@ function summaryCard(){
 function renderAnamnesisStep(){
   const old=clientCurrentAnamnesis();
   if(old && booking.hairChange===null) return `<div class="glass nested"><h2>Já encontramos uma ficha anterior.</h2><p>Houve alguma alteração capilar recente ou você realizou algum procedimento químico desde sua última avaliação?</p><div class="actions"><button type="button" class="btn" data-hair-change="no">Não</button><button type="button" class="btn gold" data-hair-change="yes">Sim</button></div></div>`;
-  if(old && booking.hairChange==='no'){ booking.anamnesisMode='reuse'; return `<div class="anamnesis-summary"><h2>Ficha atual será reutilizada</h2><p class="muted">A profissional ainda poderá revisar e atualizar observações.</p>${anamSummary(old)}</div>`; }
-  booking.anamnesisMode='new'; const x=booking.anamnesis;
+  if(old && booking.hairChange==='no'&&!old.recoveredLegacy){
+    booking.anamnesisMode='reuse';
+    return `<div class="anamnesis-summary"><h2>Ficha atual será reutilizada</h2><p class="muted">A profissional ainda poderá revisar e atualizar observações.</p>${anamSummary(old)}</div>`;
+  }
+  if(old && booking.hairChange==='no'&&old.recoveredLegacy){
+    // Older answers are saved as a NEW profile, never silently reused.
+    if(booking.anamnesisMode!=='new'){
+      booking.anamnesis={...emptyAnamnesis(),...old,
+        heatUse:Array.isArray(old.heatUse)?old.heatUse:[],
+        problems:Array.isArray(old.problems)?old.problems:[]};
+    }
+    booking.anamnesisMode='new';
+    const x=booking.anamnesis;
+    const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry'];
+    const complete=keys.every(k=>String(x[k]||'').trim())&&x.heatUse.length&&x.problems.length
+      &&HAIR_PATTERNS.includes(String(x.classification||'').trim().toUpperCase())
+      &&x.hairType===hairTypeForPattern(x.classification);
+    if(complete)return `<div class="anamnesis-summary"><h2>Confirme sua ficha anterior</h2><p class="muted">Recuperamos suas respostas do histórico. Elas serão registradas como uma ficha atualizada para esta conta.</p>${anamSummary(x)}</div>`;
+  }else booking.anamnesisMode='new';
+  const x=booking.anamnesis;
   return `<div class="form-grid anamnesis-form">${hairPatternGrid(String(x.classification||'').toUpperCase())}<label>Cor natural *<select data-an="naturalColor"><option></option>${['1 — Preto','2 — Castanho muito escuro','3 — Castanho escuro','4 — Castanho médio','5 — Castanho claro','6 — Loiro escuro','7 — Loiro médio','8 — Loiro claro','9 — Loiro muito claro','10 — Loiro claríssimo','Não identificado'].map(v=>`<option ${x.naturalColor===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Fundo/clareamento *<select data-an="lighteningBackground"><option></option>${['Vermelho escuro','Vermelho','Vermelho-alaranjado','Alaranjado','Amarelo-alaranjado','Amarelo','Amarelo claro/pálido','Não se aplica / cabelo não clareado','Não identificado'].map(v=>`<option ${x.lighteningBackground===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Densidade *<select data-an="density"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.density===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Textura *<select data-an="texture"><option></option>${['Fino','Médio','Grosso'].map(v=>`<option ${x.texture===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Característica *<select data-an="characteristic"><option></option>${['Normal','Seco','Oleoso','Misto'].map(v=>`<option ${x.characteristic===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Resistência *<select data-an="resistance"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.resistance===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Porosidade *<select data-an="porosity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.porosity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Elasticidade *<select data-an="elasticity"><option></option>${['Alta','Média','Baixa'].map(v=>`<option ${x.elasticity===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Química recente *<select data-an="recentChemistry"><option></option>${['Nenhuma','Permanente','Alisamento','Coloração','Reflexos','Outra'].map(v=>`<option ${x.recentChemistry===v?'selected':''}>${v}</option>`).join('')}</select></label><label>Detalhes da química<input data-an="chemistryDetails" value="${esc(x.chemistryDetails)}"></label><fieldset><legend>Uso frequente *</legend><div class="checkgrid">${['Nenhum','Secador','Prancha','Modelador'].map(v=>`<label><input type="checkbox" data-an-heat value="${v}" ${x.heatUse.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><fieldset><legend>Pontos informados/observados *</legend><div class="checkgrid">${['Nenhum','Queda','Seborreia/Caspa','Dermatite','Tricoptilose','Triconodose','Tricorrexis Nodosa','Tricotilomania','Pediculose'].map(v=>`<label><input type="checkbox" data-an-problem value="${v}" ${x.problems.includes(v)?'checked':''}> ${v}</label>`).join('')}</div></fieldset><label>Outros pontos<textarea data-an="otherProblems">${esc(x.otherProblems)}</textarea></label></div>`;
 }
 function anamSummary(x){ return `<div class="summary-grid">${[['Tipo',x.hairType],['Classificação',x.classification],['Cor',x.naturalColor],['Densidade',x.density],['Textura',x.texture],['Resistência',x.resistance],['Porosidade',x.porosity],['Elasticidade',x.elasticity],['Química',x.recentChemistry]].map(([k,v])=>`<span><b>${k}</b>${esc(v||'—')}</span>`).join('')}</div>`; }
@@ -1145,6 +1174,7 @@ async function nextBookingStep(){
 
 // Fluxos com Auth, Supabase e permissões vivem exclusivamente em 70-integration.js.
 // A antiga implementação local foi removida para evitar caminhos concorrentes.
+
 /* === 50-public.js: end === */
 
 /* === 60-admin.js: begin === */
@@ -1937,6 +1967,114 @@ function clientCancellationError(error){
   if(/not authenticated|jwt|session/i.test(message))return 'Sua sessão expirou. Entre novamente na sua conta.';
   return 'Não foi possível concluir o cancelamento. Tente novamente ou entre em contato com a D&D.';
 }
+
+async function verifyClientAccountPassword(password,expectedId){
+  if(!password)throw new Error('Informe a senha atual da sua conta.');
+  const {data:identity,error:identityError}=await DDB.sb.auth.getUser();
+  const account=identity?.user;
+  if(identityError||!account?.id||!account.email||account.id!==expectedId)
+    throw new Error('Sua sessão mudou. Entre novamente na conta.');
+  // Reauthenticate with the real password; updateUser by itself does not
+  // guarantee that the password supplied by the client was checked.
+  const {data:verified,error:verifyError}=await DDB.sb.auth.signInWithPassword({
+    email:account.email,password
+  });
+  if(verifyError||verified?.user?.id!==expectedId)
+    throw new Error('Senha incorreta. Confira e tente novamente.');
+  return verified.user;
+}
+function clientProfileValues(user,appointments){
+  const saved=user.user_metadata?.ddb_client_contact||{};
+  const has=k=>Object.prototype.hasOwnProperty.call(saved,k);
+  const previous=appointments?.find(a=>a.client_id===user.id)||null;
+  return {
+    name:String(has('name')?saved.name:(previous?.client_name_snapshot||previous?.client_name||user.user_metadata?.full_name||'')),
+    phone:canonicalContactPhone(has('phone')?saved.phone:(previous?.client_phone_snapshot||previous?.client_phone||'')),
+    email:String(user.email||'')
+  };
+}
+function clientProfileMarkup(user,appointments){
+  const values=clientProfileValues(user,appointments);
+  const fields=[
+    ['name','Nome completo',values.name||'Não informado'],
+    ['phone','WhatsApp',values.phone?contactPhoneDisplay(values.phone):'Não informado'],
+    ['email','E-mail da conta',values.email||'Não informado']
+  ];
+  return '<section class="glass panel client-profile-panel"><div class="between"><div><h2>Meus dados</h2><p class="muted">Usados automaticamente nos próximos agendamentos. Alterações exigem a senha atual.</p></div></div>'+
+    '<div class="client-profile-fields">'+fields.map(([field,label,value])=>
+      '<div class="client-profile-row"><div><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong></div><div class="actions">'+
+      '<button type="button" class="btn small" data-profile-edit="'+field+'">'+(value==='Não informado'?'Adicionar':'Alterar')+'</button>'+
+      (field!=='email'&&value!=='Não informado'?'<button type="button" class="btn small danger" data-profile-remove="'+field+'">Apagar</button>':'')+
+      '</div></div>').join('')+'</div><p class="muted">O e-mail de login precisa permanecer cadastrado; alterações de e-mail exigem confirmação do novo endereço. Os dados históricos de atendimentos não são apagados.</p></section>';
+}
+function bindClientProfileControls(box,user,appointments){
+  $('[data-profile-edit],[data-profile-remove]',box).forEach(button=>{
+    button.onclick=()=>openClientProfileEditor(
+      button.dataset.profileEdit||button.dataset.profileRemove,
+      user,appointments,!!button.dataset.profileRemove
+    );
+  });
+}
+function openClientProfileEditor(field,user,appointments,remove){
+  if(!['name','phone','email'].includes(field)||remove&&field==='email')return;
+  const data=clientProfileValues(user,appointments);
+  const labels={name:'nome completo',phone:'WhatsApp',email:'e-mail da conta'};
+  const value=field==='phone'?data.phone:data[field];
+  openModal((remove?'Apagar ':'Alterar ')+labels[field],
+    '<p class="muted">'+(remove?'O campo ficará vazio para novos agendamentos. O histórico de atendimentos será preservado.':'Informe o novo valor e confirme com sua senha atual.')+'</p>'+
+    (!remove?'<label>'+labels[field]+'<input id="clientProfileValue" autocomplete="off" value="'+esc(value)+'" '+(field==='email'?'type="email"':'')+'></label>':'')+
+    '<label>Senha atual da conta *<input type="password" id="clientProfilePassword" autocomplete="current-password"></label>'+
+    '<button type="button" class="btn gold" id="clientProfileSave">'+(remove?'Confirmar exclusão':'Salvar alteração')+'</button><p class="muted" id="clientProfileFeedback" role="status"></p>',
+    root=>{
+      const button=$('#clientProfileSave',root);
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        let next=remove?'':String($('#clientProfileValue',root)?.value||'').trim();
+        if(!remove&&field==='name'&&(!next||next.length>150))
+          return $('#clientProfileFeedback',root).textContent='Informe um nome válido.';
+        if(!remove&&field==='phone'){
+          next=canonicalContactPhone(next);
+          const digits=phoneKey(next);
+          if(!next.startsWith('+')||digits.length<9||digits.length>15||
+             (digits.startsWith('55')&&!([12,13].includes(digits.length))))
+            return $('#clientProfileFeedback',root).textContent='Informe WhatsApp com DDI e DDD válidos.';
+        }
+        if(!remove&&field==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next))
+          return $('#clientProfileFeedback',root).textContent='Informe um e-mail válido.';
+        const password=$('#clientProfilePassword',root).value;
+        if(!password)return $('#clientProfileFeedback',root).textContent='Informe a senha atual.';
+        button.disabled=true;
+        try{
+          await verifyClientAccountPassword(password,user.id);
+          const {data:account,error:accountError}=await DDB.sb.auth.getUser();
+          if(accountError||account?.user?.id!==user.id)throw new Error('Sua sessão mudou. Entre novamente.');
+          if(field==='email'){
+            if(next.toLowerCase()===String(account.user.email||'').toLowerCase())throw new Error('Este já é seu e-mail atual.');
+            const {error}=await DDB.sb.auth.updateUser({email:next});
+            if(error)throw error;
+          }else{
+            const old=account.user.user_metadata?.ddb_client_contact||{};
+            const {error}=await DDB.sb.auth.updateUser({
+              data:{ddb_client_contact:{...old,[field]:next}}
+            });
+            if(error)throw error;
+          }
+          currentClientContactOwnerId=null;
+          clientHasSavedContact=false;
+          clientHadPreviousContact=false;
+          clientContactEditing=true;
+          closeModal();
+          await renderAccount();
+          notify(field==='email'?'Confira o novo e-mail para confirmar a alteração.':'Seus dados foram atualizados.');
+        }catch(error){
+          $('#clientProfileFeedback',root).textContent=error?.message||'Não foi possível atualizar seus dados.';
+          button.disabled=false;
+        }
+      };
+    }
+  );
+}
+
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
  if(adminPreviewMode){
@@ -1969,7 +2107,7 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=()=>{
+ try{const list=await DDB.myAppointments();const fresh=await DDB.sb.auth.getUser();const currentUser=fresh.data?.user?.id===s.user.id?fresh.data.user:s.user;const profileHTML=clientProfileMarkup(currentUser,list);box.innerHTML=profileHTML+list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';bindClientProfileControls(box,currentUser,list);$('.account-cancel').forEach(b=>b.onclick=()=>{
     const selected=list.find(a=>String(a.id)===String(b.dataset.id));
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
@@ -2012,6 +2150,7 @@ async function backendAdminLogin(email,password){await DDB.signIn(email,password
 async function syncAdminSnapshot(){
  try{const snap=await DDB.adminSnapshot(); const db=getState(); const anamBy=new Map((snap.anamneses||[]).map(x=>[x.appointment_id,x]));const hairById=new Map((snap.client_hair_profiles||[]).map(x=>[x.id,x]));const reviewedSet=new Set((snap.appointment_events||[]).filter(e=>['anamnesis_admin_updated','non_recommendation_created','consent_created'].includes(e.event_type)).map(e=>e.appointment_id));const mapAnam=(x,origin)=>{const q=x.answers||{};return{id:x.id,origin,appointmentId:x.appointment_id||x.source_appointment_id,...q,hairType:q.hair_type??q.hairType,classification:q.pattern??q.classification,naturalColor:q.natural_color??q.naturalColor,lighteningBackground:q.lightening_background??q.lighteningBackground,recentChemistry:q.recent_chemistry??q.recentChemistry,chemistryDetails:q.chemistry_details??q.chemistryDetails,heatUse:q.frequent_heat??q.heatUse??[],problems:q.problems??q.attention_points??[],otherProblems:q.other_problems??q.otherProblems??'',createdAt:Date.parse(x.created_at),updatedAt:Date.parse(x.updated_at||x.created_at)}};db.anamneses=[...(snap.anamneses||[]).map(x=>mapAnam(x,'legacy')),...(snap.client_hair_profiles||[]).map(x=>mapAnam(x,'profile'))]; const matCostBy=new Map();for(const m of (snap.appointment_materials||[])){matCostBy.set(m.appointment_id,(matCostBy.get(m.appointment_id)||0)+Number(m.internal_unit_cost_snapshot||0)*Number(m.estimated_quantity||0));} const payBy=new Map();for(const p of snap.payments||[]){if(!payBy.has(p.appointment_id))payBy.set(p.appointment_id,[]);payBy.get(p.appointment_id).push(p);}db.appointments=(snap.appointments||[]).map(a=>{const ps=payBy.get(a.id)||[],dep=ps.find(p=>p.kind==='deposit'&&p.status==='recorded'),fin=ps.find(p=>p.kind==='final'&&p.status==='recorded'),ref=ps.find(p=>p.kind==='refund'&&p.status==='recorded'),dt=a.scheduled_start?new Date(a.scheduled_start):null;return{id:a.id,procedureId:a.service_id,methodId:a.method_id||'',variationId:a.variation_id||'',professionalId:a.professional_id,date:dt?dt.toLocaleDateString('en-CA',{timeZone:'America/Sao_Paulo'}):'',time:dt?dt.toLocaleTimeString('pt-BR',{timeZone:'America/Sao_Paulo',hour:'2-digit',minute:'2-digit'}):'',period:'',clientName:a.client_name_snapshot||'',phone:a.client_phone_snapshot||'',email:a.client_email_snapshot||'',status:a.status==='not_recommended'?'non_recommended':a.status==='client_aware'?'acknowledged':a.status,bookingFeeAmount:Number(a.deposit_amount||0),bookingFeePaid:!!dep,bookingFeePaidAt:dep?.paid_at?Date.parse(dep.paid_at):null,refundStatus:ref?'refunded':a.deposit_status==='refund_pending'?'pending':'none',price:Number(a.total_amount||0),fullDay:getProcedure(a.service_id)?.special==='maintenance',durationMinutes:a.scheduled_start&&a.expected_end?Math.round((Date.parse(a.expected_end)-Date.parse(a.scheduled_start))/60000):Number(getVariation(getMethod(getProcedure(a.service_id),a.method_id),a.variation_id)?.durationMinutes||getMethod(getProcedure(a.service_id),a.method_id)?.durationMinutes||getProcedure(a.service_id)?.durationMinutes||0),serviceName:a.service_name_snapshot||getProcedure(a.service_id)?.name||'',anamnesisId:(hairById.has(a.hair_profile_id)?a.hair_profile_id:anamBy.get(a.id)?.id)||null,anamnesisReviewed:reviewedSet.has(a.id)||['not_recommended','client_aware','confirmed','completed'].includes(a.status),createdAt:Date.parse(a.created_at),paid:!!fin,paymentMethod:fin?.method||'',paidAt:fin?.paid_at?Date.parse(fin.paid_at):null,refundedAt:ref?.paid_at?Date.parse(ref.paid_at):null,installments:fin?.installments||0,installmentValue:Number(fin?.installment_amount||0),finalPaymentAmount:Number(fin?.amount||0),materialCost:Number(matCostBy.get(a.id)||0)};});db.operationalTasks=(snap.operational_tasks||[]).map(t=>({id:t.id,type:t.task_type,appointmentId:t.appointment_id,createdAt:Date.parse(t.created_at),resolvedAt:t.resolved_at?Date.parse(t.resolved_at):null,resolutionAction:t.resolution_action||''}));db.operators=(snap.internal_operators||[]).filter(o=>o.is_active);const opNames=new Map((snap.internal_operators||[]).map(o=>[o.id,o.display_name]));const opById=new Map((snap.internal_operators||[]).map(o=>[o.id,o]));const pixByPro=new Map((snap.professional_pix_keys||[]).map(x=>[x.professional_id,x]));for(const p of db.professionals){const row=(snap.professionals||[]).find(x=>x.id===p.id),op=row?opById.get(row.operator_id):null,pix=pixByPro.get(p.id);p.operatorId=row?.operator_id||null;p.pinConfigured=!!op?.pin_updated_at;p.pixKey=pix?.pix_key||'';}db.audits=[...(snap.audit_log||[]).map(x=>({id:x.id,actor:opNames.get(x.operator_id)||'Admin',area:x.entity_type||'Sistema',action:x.action||'Alteração',at:Date.parse(x.created_at),details:x.details||{}})),...(snap.appointment_events||[]).map(x=>({id:x.id,actor:opNames.get(x.operator_id)||'Sistema',area:'Atendimento',action:x.event_type||'Evento',at:Date.parse(x.created_at),details:x.payload||{}}))].sort((a,b)=>b.at-a.at);const aset=Object.fromEntries((snap.app_settings||[]).map(x=>[x.key,x.value]));if(aset.cancellation_hours!=null)db.settings.cancelHours=Number(aset.cancellation_hours);db.settings.consentStandardText=aset.consent_standard_text||'';db.settings.consentVersion=aset.consent_standard_version||'1.0';const msgMap={deposit_charge:'fee',confirmation:'confirm',cancellation:'cancel',reschedule:'reschedule',reminder:'reminder',open_slot:'opening',not_recommended:'nonRecommended',refund_completed:'refundCompleted'};for(const t of (snap.whatsapp_templates||[])){const k=msgMap[t.template_key];if(k)db.settings.messages[k]=t.body;}saveState();}catch(e){console.error('Admin sync failed',e);}
 }
+
 /* === 70-integration.js: end === */
 
 /* === 80-startup.js: begin === */
