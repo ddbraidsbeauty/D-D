@@ -77,6 +77,49 @@ function canonicalContactPhone(value){
   if(digits.startsWith('55')&&(digits.length===12||digits.length===13))return '+'+digits;
   return '+'+digits;
 }
+// Shared international telephone control for every editable phone field.
+// Uses the same Brazil-first country selector as the booking step.
+function mountInternationalPhone(input,initial=''){
+  if(!input)return {getNumber:()=>'',isValid:()=>false};
+  input.type='tel';
+  input.autocomplete='tel';
+  input.inputMode='tel';
+  input.setAttribute('aria-label','WhatsApp com DDI e DDD');
+  input.placeholder='+55 (33) 99999-9999';
+  let iti=null;
+  if(typeof window.intlTelInput==='function'){
+    try{
+      iti=window.intlTelInput(input,{
+        initialCountry:'br',
+        countryOrder:['br','us','pt','gb','ar'],
+        separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+        loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
+      });
+      if(initial)iti.setNumber(canonicalContactPhone(initial));
+    }catch(error){console.warn('Seletor internacional indisponível:',error);iti=null;}
+  }
+  if(!iti)input.value=canonicalContactPhone(initial);
+  const getNumber=()=>{
+    const raw=String(input.value||'').trim();
+    const digits=phoneKey(raw);
+    if(!digits)return '';
+    if(raw.startsWith('+'))return '+'+digits;
+    if(raw.startsWith('00')&&digits.length>10)return '+'+digits.slice(2);
+    const dial=phoneKey(iti?.getSelectedCountryData?.()?.dialCode||'55');
+    if(dial==='55'&&digits.startsWith('55')&&[12,13].includes(digits.length))
+      return '+'+digits;
+    if(dial==='1'&&digits.startsWith('1')&&digits.length===11)
+      return '+'+digits;
+    return '+'+dial+digits;
+  };
+  const isValid=()=>{
+    const number=getNumber(),digits=phoneKey(number);
+    return number.startsWith('+')&&digits.length>=9&&digits.length<=15
+      &&(!digits.startsWith('55')||[12,13].includes(digits.length));
+  };
+  return {getNumber,isValid,destroy:()=>iti?.destroy?.()};
+}
+
 function contactPhoneDisplay(value){
   const digits=phoneKey(canonicalContactPhone(value));
   if(digits.startsWith('55')&&(digits.length===12||digits.length===13)){
