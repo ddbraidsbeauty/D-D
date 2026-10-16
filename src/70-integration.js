@@ -317,6 +317,7 @@ function openClientProfileEditor(field,user,appointments,remove){
     '<label>Senha atual da conta *<input type="password" id="clientProfilePassword" autocomplete="current-password"></label>'+
     '<button type="button" class="btn gold" id="clientProfileSave">'+(remove?'Confirmar exclusão':'Salvar alteração')+'</button><p class="muted" id="clientProfileFeedback" role="status"></p>',
     root=>{
+      const phoneField=field==='phone'&&!remove?mountInternationalPhone($('#clientProfileValue',root),value):null;
       const button=$('#clientProfileSave',root);
       button.onclick=async()=>{
         if(button.disabled)return;
@@ -324,11 +325,8 @@ function openClientProfileEditor(field,user,appointments,remove){
         if(!remove&&field==='name'&&(!next||next.length>150))
           return $('#clientProfileFeedback',root).textContent='Informe um nome válido.';
         if(!remove&&field==='phone'){
-          next=canonicalContactPhone(next);
-          const digits=phoneKey(next);
-          if(!next.startsWith('+')||digits.length<9||digits.length>15||
-             (digits.startsWith('55')&&!([12,13].includes(digits.length))))
-            return $('#clientProfileFeedback',root).textContent='Informe WhatsApp com DDI e DDD válidos.';
+          if(!phoneField?.isValid())return $('#clientProfileFeedback',root).textContent='Selecione o país e informe WhatsApp com DDI e DDD válidos.';
+          next=phoneField.getNumber();
         }
         if(!remove&&field==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next))
           return $('#clientProfileFeedback',root).textContent='Informe um e-mail válido.';
