@@ -299,7 +299,7 @@ function clientProfileMarkup(user,appointments){
       '</div></div>').join('')+'</div><p class="muted">O e-mail de login precisa permanecer cadastrado; alterações de e-mail exigem confirmação do novo endereço. Os dados históricos de atendimentos não são apagados.</p></section>';
 }
 function bindClientProfileControls(box,user,appointments){
-  $('[data-profile-edit],[data-profile-remove]',box).forEach(button=>{
+  $$('[data-profile-edit],[data-profile-remove]',box).forEach(button=>{
     button.onclick=()=>openClientProfileEditor(
       button.dataset.profileEdit||button.dataset.profileRemove,
       user,appointments,!!button.dataset.profileRemove
