@@ -146,3 +146,13 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 #featured.featured-track>.empty-state{flex:1 1 auto}
 @media(max-width:700px){#featured.featured-track>.card{flex-basis:min(78vw,300px)}.featured-arrows{display:none}}
 @media(prefers-reduced-motion:reduce){#featured.featured-track{scroll-behavior:auto}}
+
+/* Portal Cliente: password-protected account data editor */
+.client-profile-panel{margin-bottom:1.5rem}
+.client-profile-fields{display:grid;gap:.75rem;margin:1rem 0}
+.client-profile-row{display:flex;align-items:center;justify-content:space-between;gap:1rem;border:1px solid var(--line);border-radius:16px;padding:1rem;min-width:0}
+.client-profile-row>div:first-child{min-width:0;overflow-wrap:anywhere}
+.client-profile-row small{display:block;color:var(--muted);margin-bottom:.35rem}
+.client-profile-row strong{display:block;overflow-wrap:anywhere}
+.client-profile-row .actions{display:flex;flex-wrap:wrap;gap:.5rem}
+@media(max-width:600px){.client-profile-row{flex-direction:column;align-items:stretch}.client-profile-row .actions{justify-content:flex-start}.client-profile-row .actions .btn{min-height:40px}}
