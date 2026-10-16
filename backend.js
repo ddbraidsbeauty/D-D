@@ -86,34 +86,77 @@
     async reuseHairProfile(appointmentId){ return rpc('reuse_latest_hair_profile',{p_appointment_id:appointmentId}); },
     async acceptConsent(consentId){ return rpc('accept_consent',{p_consent_id:consentId}); },
     async myLatestHairProfile(expectedClientId=null){
-      // The query is scoped by BOTH the verified Auth user ID and the
-      // client_hair_profiles SELECT RLS policy; never identify clients by phone.
+      // Always verify account ownership. Never match an anamnesis by phone,
+      // e-mail, or an admin snapshot.
       const {data:identity,error:identityError}=await sb.auth.getUser();
       const userId=identity?.user?.id;
       if(identityError||!userId)throw new Error('Sua sessão expirou. Entre novamente para consultar sua ficha.');
       if(expectedClientId&&userId!==expectedClientId)throw new Error('A conta ativa mudou. Entre novamente antes de continuar.');
+      const normalize=(row,historical=false)=>{
+        const a=row.answers||{};
+        return {
+          id:row.id,clientId:userId,recoveredLegacy:historical,
+          hairType:a.hair_type??a.hairType??'',
+          classification:a.pattern??a.classification??'',
+          naturalColor:a.natural_color??a.naturalColor??'',
+          lighteningBackground:a.lightening_background??a.lighteningBackground??'',
+          density:a.density??'',texture:a.texture??'',
+          characteristic:a.characteristic??'',
+          resistance:a.resistance??'',porosity:a.porosity??'',
+          elasticity:a.elasticity??'',
+          recentChemistry:a.recent_chemistry??a.recentChemistry??'',
+          chemistryDetails:a.chemistry_details??a.chemistryDetails??'',
+          heatUse:a.frequent_heat??a.heatUse??[],
+          problems:a.problems??[],
+          otherProblems:a.other_problems??a.otherProblems??''
+        };
+      };
       const {data,error}=await sb.from('client_hair_profiles')
         .select('id,client_id,version,answers,superseded_at')
         .eq('client_id',userId)
         .is('superseded_at',null)
         .order('version',{ascending:false})
-        .limit(1)
-        .maybeSingle();
+        .limit(1).maybeSingle();
       if(error)throw error;
-      if(!data)return null;
-      const a=data.answers||{};
-      return {
-        id:data.id,clientId:data.client_id,
-        hairType:a.hair_type??a.hairType??'',
-        classification:a.pattern??a.classification??'',
-        naturalColor:a.natural_color??a.naturalColor??'',
-        lighteningBackground:a.lightening_background??a.lighteningBackground??'',
-        density:a.density??'',texture:a.texture??'',
-        characteristic:a.characteristic??'',
-        resistance:a.resistance??'',porosity:a.porosity??'',
-        elasticity:a.elasticity??'',
-        recentChemistry:a.recent_chemistry??a.recentChemistry??''
-      };
+      if(data)return normalize(data);
+      // Legacy bookings may have a linked (historical) profile without an
+      // active current profile. Fetch only appointments owned by this user,
+      // and only profiles whose client_id ALSO matches this user. A historical
+      // profile is prefilled and saved as a NEW profile, not silently reused.
+      const {data:appointments,error:appointmentsError}=await sb.from('appointments')
+        .select('id,hair_profile_id')
+        .eq('client_id',userId)
+        .order('created_at',{ascending:false})
+        .limit(50);
+      if(appointmentsError)throw appointmentsError;
+      const ids=[...new Set((appointments||[]).map(a=>a.hair_profile_id).filter(Boolean))];
+      if(ids.length){
+        const {data:linked,error:linkedError}=await sb.from('client_hair_profiles')
+          .select('id,client_id,version,answers,superseded_at')
+          .eq('client_id',userId)
+          .in('id',ids)
+          .order('version',{ascending:false})
+          .limit(1).maybeSingle();
+        if(linkedError)throw linkedError;
+        if(linked)return normalize(linked,true);
+      }
+      // Older appointments may store their anamnesis in the legacy table.
+      // RLS still controls access; no admin credentials or broad queries.
+      const appointmentIds=(appointments||[]).map(a=>a.id);
+      if(!appointmentIds.length)return null;
+      try{
+        const {data:legacy,error:legacyError}=await sb.from('anamneses')
+          .select('id,appointment_id,answers,created_at')
+          .in('appointment_id',appointmentIds)
+          .order('created_at',{ascending:false})
+          .limit(1).maybeSingle();
+        if(legacyError)throw legacyError;
+        if(legacy)return normalize(legacy,true);
+      }catch(error){
+        // Legacy table may be admin-only. Do not bypass its RLS.
+        console.info('Ficha histórica não acessível nesta conta:',error?.code||'indisponível');
+      }
+      return null;
     },
     async myAppointments(){ const {data,error}=await sb.from('appointments').select('*').order('created_at',{ascending:false}); if(error) throw error; return data||[]; },
     async clientCancel(id,reason='Cancelado pela cliente'){ return rpc('client_cancel_appointment',{p_appointment_id:id,p_reason:reason}); },
