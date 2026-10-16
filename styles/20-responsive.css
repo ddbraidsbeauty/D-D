@@ -171,6 +171,10 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 .modalbox #modalBody .iti input{width:100%;min-width:0}
 .modalbox #modalBody .iti__dropdown-content{z-index:110;background:var(--solid);color:var(--text);border-color:var(--line)}
 .modalbox #modalBody .iti__search-input{color:var(--text);background:var(--solid)}
+/* International country dropdown is portaled outside scrollable modal. */
+.iti--container{z-index:180}
+.iti--container .iti__dropdown-content{background:var(--solid);color:var(--text);border-color:var(--line)}
+.iti--container .iti__search-input{background:var(--solid);color:var(--text)}
 .modalbox #modalBody .modal-actions{display:flex;flex-wrap:wrap;gap:10px}
 @media(max-width:600px){
   .modalbox #modalBody .modal-actions .btn{flex:1 1 150px}
