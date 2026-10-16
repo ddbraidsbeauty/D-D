@@ -258,6 +258,114 @@ function clientCancellationError(error){
   if(/not authenticated|jwt|session/i.test(message))return 'Sua sessão expirou. Entre novamente na sua conta.';
   return 'Não foi possível concluir o cancelamento. Tente novamente ou entre em contato com a D&D.';
 }
+
+async function verifyClientAccountPassword(password,expectedId){
+  if(!password)throw new Error('Informe a senha atual da sua conta.');
+  const {data:identity,error:identityError}=await DDB.sb.auth.getUser();
+  const account=identity?.user;
+  if(identityError||!account?.id||!account.email||account.id!==expectedId)
+    throw new Error('Sua sessão mudou. Entre novamente na conta.');
+  // Reauthenticate with the real password; updateUser by itself does not
+  // guarantee that the password supplied by the client was checked.
+  const {data:verified,error:verifyError}=await DDB.sb.auth.signInWithPassword({
+    email:account.email,password
+  });
+  if(verifyError||verified?.user?.id!==expectedId)
+    throw new Error('Senha incorreta. Confira e tente novamente.');
+  return verified.user;
+}
+function clientProfileValues(user,appointments){
+  const saved=user.user_metadata?.ddb_client_contact||{};
+  const has=k=>Object.prototype.hasOwnProperty.call(saved,k);
+  const previous=appointments?.find(a=>a.client_id===user.id)||null;
+  return {
+    name:String(has('name')?saved.name:(previous?.client_name_snapshot||previous?.client_name||user.user_metadata?.full_name||'')),
+    phone:canonicalContactPhone(has('phone')?saved.phone:(previous?.client_phone_snapshot||previous?.client_phone||'')),
+    email:String(user.email||'')
+  };
+}
+function clientProfileMarkup(user,appointments){
+  const values=clientProfileValues(user,appointments);
+  const fields=[
+    ['name','Nome completo',values.name||'Não informado'],
+    ['phone','WhatsApp',values.phone?contactPhoneDisplay(values.phone):'Não informado'],
+    ['email','E-mail da conta',values.email||'Não informado']
+  ];
+  return '<section class="glass panel client-profile-panel"><div class="between"><div><h2>Meus dados</h2><p class="muted">Usados automaticamente nos próximos agendamentos. Alterações exigem a senha atual.</p></div></div>'+
+    '<div class="client-profile-fields">'+fields.map(([field,label,value])=>
+      '<div class="client-profile-row"><div><small>'+esc(label)+'</small><strong>'+esc(value)+'</strong></div><div class="actions">'+
+      '<button type="button" class="btn small" data-profile-edit="'+field+'">'+(value==='Não informado'?'Adicionar':'Alterar')+'</button>'+
+      (field!=='email'&&value!=='Não informado'?'<button type="button" class="btn small danger" data-profile-remove="'+field+'">Apagar</button>':'')+
+      '</div></div>').join('')+'</div><p class="muted">O e-mail de login precisa permanecer cadastrado; alterações de e-mail exigem confirmação do novo endereço. Os dados históricos de atendimentos não são apagados.</p></section>';
+}
+function bindClientProfileControls(box,user,appointments){
+  $('[data-profile-edit],[data-profile-remove]',box).forEach(button=>{
+    button.onclick=()=>openClientProfileEditor(
+      button.dataset.profileEdit||button.dataset.profileRemove,
+      user,appointments,!!button.dataset.profileRemove
+    );
+  });
+}
+function openClientProfileEditor(field,user,appointments,remove){
+  if(!['name','phone','email'].includes(field)||remove&&field==='email')return;
+  const data=clientProfileValues(user,appointments);
+  const labels={name:'nome completo',phone:'WhatsApp',email:'e-mail da conta'};
+  const value=field==='phone'?data.phone:data[field];
+  openModal((remove?'Apagar ':'Alterar ')+labels[field],
+    '<p class="muted">'+(remove?'O campo ficará vazio para novos agendamentos. O histórico de atendimentos será preservado.':'Informe o novo valor e confirme com sua senha atual.')+'</p>'+
+    (!remove?'<label>'+labels[field]+'<input id="clientProfileValue" autocomplete="off" value="'+esc(value)+'" '+(field==='email'?'type="email"':'')+'></label>':'')+
+    '<label>Senha atual da conta *<input type="password" id="clientProfilePassword" autocomplete="current-password"></label>'+
+    '<button type="button" class="btn gold" id="clientProfileSave">'+(remove?'Confirmar exclusão':'Salvar alteração')+'</button><p class="muted" id="clientProfileFeedback" role="status"></p>',
+    root=>{
+      const button=$('#clientProfileSave',root);
+      button.onclick=async()=>{
+        if(button.disabled)return;
+        let next=remove?'':String($('#clientProfileValue',root)?.value||'').trim();
+        if(!remove&&field==='name'&&(!next||next.length>150))
+          return $('#clientProfileFeedback',root).textContent='Informe um nome válido.';
+        if(!remove&&field==='phone'){
+          next=canonicalContactPhone(next);
+          const digits=phoneKey(next);
+          if(!next.startsWith('+')||digits.length<9||digits.length>15||
+             (digits.startsWith('55')&&!([12,13].includes(digits.length))))
+            return $('#clientProfileFeedback',root).textContent='Informe WhatsApp com DDI e DDD válidos.';
+        }
+        if(!remove&&field==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next))
+          return $('#clientProfileFeedback',root).textContent='Informe um e-mail válido.';
+        const password=$('#clientProfilePassword',root).value;
+        if(!password)return $('#clientProfileFeedback',root).textContent='Informe a senha atual.';
+        button.disabled=true;
+        try{
+          await verifyClientAccountPassword(password,user.id);
+          const {data:account,error:accountError}=await DDB.sb.auth.getUser();
+          if(accountError||account?.user?.id!==user.id)throw new Error('Sua sessão mudou. Entre novamente.');
+          if(field==='email'){
+            if(next.toLowerCase()===String(account.user.email||'').toLowerCase())throw new Error('Este já é seu e-mail atual.');
+            const {error}=await DDB.sb.auth.updateUser({email:next});
+            if(error)throw error;
+          }else{
+            const old=account.user.user_metadata?.ddb_client_contact||{};
+            const {error}=await DDB.sb.auth.updateUser({
+              data:{ddb_client_contact:{...old,[field]:next}}
+            });
+            if(error)throw error;
+          }
+          currentClientContactOwnerId=null;
+          clientHasSavedContact=false;
+          clientHadPreviousContact=false;
+          clientContactEditing=true;
+          closeModal();
+          await renderAccount();
+          notify(field==='email'?'Confira o novo e-mail para confirmar a alteração.':'Seus dados foram atualizados.');
+        }catch(error){
+          $('#clientProfileFeedback',root).textContent=error?.message||'Não foi possível atualizar seus dados.';
+          button.disabled=false;
+        }
+      };
+    }
+  );
+}
+
 async function renderAccount(){
  const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
  if(adminPreviewMode){
@@ -290,7 +398,7 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();box.innerHTML=list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';$$('.account-cancel').forEach(b=>b.onclick=()=>{
+ try{const list=await DDB.myAppointments();const fresh=await DDB.sb.auth.getUser();const currentUser=fresh.data?.user?.id===s.user.id?fresh.data.user:s.user;const profileHTML=clientProfileMarkup(currentUser,list);box.innerHTML=profileHTML+list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';bindClientProfileControls(box,currentUser,list);$('.account-cancel').forEach(b=>b.onclick=()=>{
     const selected=list.find(a=>String(a.id)===String(b.dataset.id));
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
