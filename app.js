@@ -101,6 +101,49 @@ function canonicalContactPhone(value){
   if(digits.startsWith('55')&&(digits.length===12||digits.length===13))return '+'+digits;
   return '+'+digits;
 }
+// Shared international telephone control for every editable phone field.
+// Uses the same Brazil-first country selector as the booking step.
+function mountInternationalPhone(input,initial=''){
+  if(!input)return {getNumber:()=>'',isValid:()=>false};
+  input.type='tel';
+  input.autocomplete='tel';
+  input.inputMode='tel';
+  input.setAttribute('aria-label','WhatsApp com DDI e DDD');
+  input.placeholder='+55 (33) 99999-9999';
+  let iti=null;
+  if(typeof window.intlTelInput==='function'){
+    try{
+      iti=window.intlTelInput(input,{
+        initialCountry:'br',
+        countryOrder:['br','us','pt','gb','ar'],
+        separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+        loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
+      });
+      if(initial)iti.setNumber(canonicalContactPhone(initial));
+    }catch(error){console.warn('Seletor internacional indisponível:',error);iti=null;}
+  }
+  if(!iti)input.value=canonicalContactPhone(initial);
+  const getNumber=()=>{
+    const raw=String(input.value||'').trim();
+    const digits=phoneKey(raw);
+    if(!digits)return '';
+    if(raw.startsWith('+'))return '+'+digits;
+    if(raw.startsWith('00')&&digits.length>10)return '+'+digits.slice(2);
+    const dial=phoneKey(iti?.getSelectedCountryData?.()?.dialCode||'55');
+    if(dial==='55'&&digits.startsWith('55')&&[12,13].includes(digits.length))
+      return '+'+digits;
+    if(dial==='1'&&digits.startsWith('1')&&digits.length===11)
+      return '+'+digits;
+    return '+'+dial+digits;
+  };
+  const isValid=()=>{
+    const number=getNumber(),digits=phoneKey(number);
+    return number.startsWith('+')&&digits.length>=9&&digits.length<=15
+      &&(!digits.startsWith('55')||[12,13].includes(digits.length));
+  };
+  return {getNumber,isValid,destroy:()=>iti?.destroy?.()};
+}
+
 function contactPhoneDisplay(value){
   const digits=phoneKey(canonicalContactPhone(value));
   if(digits.startsWith('55')&&(digits.length===12||digits.length===13)){
@@ -114,6 +157,7 @@ function waLink(phone,text){ return `https://wa.me/${whatsAppDigits(phone)}?text
 function csv(v){ return String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function routeHash(){ const h=location.hash.replace(/^#/,''); if(/(?:^|&)access_token=|(?:^|&)refresh_token=|(?:^|&)error(?:_code|_description)?=/.test(h)) return 'booking'; return h.split('?')[0] || 'home'; }
 function paramsFromHash(){ const p=location.hash.split('?')[1]||''; return new URLSearchParams(p); }
+
 /* === 10-ui.js: end === */
 
 /* === 20-store.js: begin === */
@@ -1515,7 +1559,7 @@ function bindBookings(){
 }
 async function resolveTask(id,action){try{await DDB.resolveTask(id,action);await syncAdminSnapshot();renderModule();}catch(e){notify(e.message||'Não foi possível encerrar a pendência.');}}
 function offerSlot(taskId=null){const db=getState(),task=(db.operationalTasks||[]).find(x=>x.id===taskId), clients=[...new Map(db.appointments.filter(a=>a.phone).map(a=>[a.phone,{name:a.clientName,phone:a.phone}])).values()];openModal('Oferecer vaga pelo WhatsApp',`<div class="form-grid"><label>Data<input id="offerDate" type="date" value="${task?.date||agendaDate}"></label><label>Horário/período<input id="offerTime" value="${esc(task?.time||'')}"></label><label>Profissional<select id="offerPro">${activeProfessionals().map(p=>`<option value="${p.id}" ${p.id===(task?.professionalId||agendaPro)?'selected':''}>${esc(p.name)}</option>`).join('')}</select></label><label>Cliente<select id="offerClient"><option value="">Selecione</option>${clients.map(c=>`<option value="${esc(c.phone)}" data-name="${esc(c.name)}">${esc(c.name)} — ${esc(c.phone)}</option>`).join('')}</select></label></div><button class="btn gold" id="sendOffer">Enviar oferta pelo WhatsApp</button>`,root=>{$('#sendOffer',root).onclick=()=>{const sel=$('#offerClient',root),phone=sel.value;if(!phone)return notify('Selecione uma cliente.');const opt=sel.selectedOptions[0],a={clientName:opt.dataset.name||'',phone,professionalId:$('#offerPro',root).value,procedureId:'',date:$('#offerDate',root).value,time:$('#offerTime',root).value,period:$('#offerTime',root).value,price:0};let text=getState().settings.messages.opening||'';text=text.replaceAll('{cliente}',a.clientName).replaceAll('{profissional}',getProfessional(a.professionalId)?.name||'').replaceAll('{data}',fmtDate(a.date)).replaceAll('{horario}',a.time).replaceAll('{procedimento}','');window.open(waLink(phone,text),'_blank');if(task){task.resolvedAt=Date.now();task.resolutionAction='Vaga oferecida';}saveState();audit('Admin','Agendamentos','Oferta de vaga enviada',null,{date:a.date,professionalId:a.professionalId,client:a.clientName});closeModal();renderModule();};});}
-function manualAppointment(){const db=getState();openModal('Novo agendamento manual',`<div class="form-grid"><label>Cliente<input id="manName"></label><label>WhatsApp<input id="manPhone"></label><label>Profissional<select id="manPro">${activeProfessionals().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>Procedimento<select id="manProc">${activeProcedures().filter(p=>p.special!=='maintenance').map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>Data<input id="manDate" type="date" value="${agendaDate}"></label><label>Horário<input id="manTime" type="time"></label></div><button class="btn gold" id="saveManual">Criar agendamento</button>`,root=>{$('#saveManual',root).onclick=async()=>{const p=getProcedure($('#manProc',root).value),date=$('#manDate',root).value,time=$('#manTime',root).value;if(!date||!time)return notify('Informe data e horário.');const methodId=p.methods?.[0]?.id||null;try{await DDB.manualAppointment({professionalId:$('#manPro',root).value,serviceId:p.id,methodId,variationId:null,start:`${date}T${time}:00-03:00`,end:null,clientName:$('#manName',root).value,clientPhone:$('#manPhone',root).value,clientEmail:null});closeModal();await syncAdminSnapshot();renderModule();notify('Agendamento manual criado.');}catch(e){notify(e.message||'Não foi possível criar o agendamento.');}};});}
+function manualAppointment(){const db=getState();openModal('Novo agendamento manual',`<div class="form-grid"><label>Cliente<input id="manName"></label><label>WhatsApp<input id="manPhone" type="tel" autocomplete="tel" inputmode="tel"></label><label>Profissional<select id="manPro">${activeProfessionals().map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>Procedimento<select id="manProc">${activeProcedures().filter(p=>p.special!=='maintenance').map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><label>Data<input id="manDate" type="date" value="${agendaDate}"></label><label>Horário<input id="manTime" type="time"></label></div><button class="btn gold" id="saveManual">Criar agendamento</button>`,root=>{const phoneField=mountInternationalPhone($('#manPhone',root));$('#saveManual',root).onclick=async()=>{if(!phoneField.isValid())return notify('Informe um WhatsApp com país e DDD válidos.','Telefone');const p=getProcedure($('#manProc',root).value),date=$('#manDate',root).value,time=$('#manTime',root).value;if(!date||!time)return notify('Informe data e horário.');const methodId=p.methods?.[0]?.id||null;try{await DDB.manualAppointment({professionalId:$('#manPro',root).value,serviceId:p.id,methodId,variationId:null,start:`${date}T${time}:00-03:00`,end:null,clientName:$('#manName',root).value,clientPhone:phoneField.getNumber(),clientEmail:null});closeModal();await syncAdminSnapshot();renderModule();notify('Agendamento manual criado.');}catch(e){notify(e.message||'Não foi possível criar o agendamento.');}};});}
 function blockDate(){const pros=activeProfessionals();openModal('Bloquear data',`<label>Profissional<select id="blockPro">${pros.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><p>Data: <b>${fmtDate(agendaDate)}</b></p><button class="btn danger" id="saveBlock">Bloquear</button>`,root=>{$('#saveBlock',root).onclick=async()=>{const pro=$('#blockPro',root).value;try{await DDB.setDateException({professionalId:pro,date:agendaDate,available:false,start:null,end:null,maxAppointments:null,reason:'Bloqueio manual'});closeModal();await bootstrapBackendPublic();renderModule();notify('Data bloqueada.');}catch(e){notify(e.message||'Não foi possível bloquear a data.');}};});}
 function editHours(){const pros=activeProfessionals();openModal('Horários da profissional',`<label>Profissional<select id="hoursPro">${pros.map(p=>`<option value="${p.id}">${esc(p.name)}</option>`).join('')}</select></label><div id="hoursFields"></div>`,root=>{const render=()=>{const id=$('#hoursPro',root).value,av=availabilityFor(id);$('#hoursFields',root).innerHTML=`<div class="form-grid"><label>Início<input id="hoursStart" type="time" value="${av.start}"></label><label>Fim<input id="hoursEnd" type="time" value="${av.end}"></label><label>Intervalo de segurança entre clientes (min)<input id="hoursBuffer" type="number" min="0" step="5" value="${Number(av.bufferMinutes||0)}"></label></div><fieldset><legend>Dias regulares de atendimento</legend><div class="checkgrid">${[['1','Seg'],['2','Ter'],['3','Qua'],['4','Qui'],['5','Sex'],['6','Sáb']].map(([n,l])=>`<label class="toggle-option"><input type="checkbox" data-weekday="${n}" ${av.weekdays.includes(Number(n))?'checked':''}><span>${l}</span></label>`).join('')}</div></fieldset><p class="muted">Domingos públicos são escolhidos por data em Configurações. Horários noturnos aparecem normalmente para a cliente quando fizerem parte da disponibilidade da profissional.</p><button class="btn gold" id="saveHours">Salvar horários</button>`;$('#saveHours',root).onclick=async()=>{const real=getState().availability[id]||(getState().availability[id]={weekdays:[1,2,3,4,5,6],blocks:[]});real.start=$('#hoursStart',root).value;real.end=$('#hoursEnd',root).value;real.bufferMinutes=Number($('#hoursBuffer',root).value||0);real.weekdays=$$('[data-weekday]:checked',root).map(x=>Number(x.dataset.weekday));try{await DDB.saveAvailability({professionalId:id,weekdays:real.weekdays,start:real.start,end:real.end,maxAppointments:null});saveState();audit('Admin','Agendamentos','Horários alterados',null,{id,start:real.start,end:real.end});closeModal();await syncAdminSnapshot();renderModule();}catch(e){notify(e.message||'Não foi possível salvar os horários.');}};};$('#hoursPro',root).onchange=render;render();});}
 function adminRequirementRows(opts){return Object.entries(opts?.required||{}).map(([field_key,required])=>({field_key,required:!!required}));}
@@ -1716,9 +1760,10 @@ function cancelAppointment(id){const a=getState().appointments.find(x=>x.id===id
 function bindProfessionals(){$('[data-new-professional]')?.addEventListener('click',()=>editProfessional());$$('[data-edit-professional]').forEach(b=>b.onclick=()=>editProfessional(b.dataset.editProfessional));}
 function editProfessional(id){
  const p=id?getProfessional(id):{id:null,name:'',image:'',instagram:'',whatsapp:'',pixKey:'',active:true,bookable:true};let image=p.image||'';
- openModal(id?'Editar profissional':'Adicionar profissional',`<form id="proForm" class="form"><label>Nome<input name="name" value="${esc(p.name)}" required></label>${uploadField('proImage','Foto',image)}<label>Instagram<input name="instagram" value="${esc(p.instagram||'')}"></label><label>WhatsApp<input name="whatsapp" value="${esc(p.whatsapp||'')}"></label><label>Chave PIX<input name="pixKey" value="${esc(p.pixKey||'')}"></label><label>Novo PIN (opcional, 4–6 dígitos)<input name="pin" inputmode="numeric" maxlength="6" placeholder="Deixe vazio para manter"></label><label class="toggle-option"><input name="bookable" type="checkbox" ${p.bookable!==false?'checked':''}><span>Disponível para agendamentos</span></label><button class="btn gold">Salvar</button></form>`,root=>{
+ openModal(id?'Editar profissional':'Adicionar profissional',`<form id="proForm" class="form"><label>Nome<input name="name" value="${esc(p.name)}" required></label>${uploadField('proImage','Foto',image)}<label>Instagram<input name="instagram" value="${esc(p.instagram||'')}"></label><label>WhatsApp<input name="whatsapp" type="tel" autocomplete="tel" inputmode="tel" value="${esc(p.whatsapp||'')}"></label><label>Chave PIX<input name="pixKey" value="${esc(p.pixKey||'')}"></label><label>Novo PIN (opcional, 4–6 dígitos)<input name="pin" inputmode="numeric" maxlength="6" placeholder="Deixe vazio para manter"></label><label class="toggle-option"><input name="bookable" type="checkbox" ${p.bookable!==false?'checked':''}><span>Disponível para agendamentos</span></label><button class="btn gold">Salvar</button></form>`,root=>{
   bindUpload('proImage',()=>image,v=>image=v);
-  $('#proForm',root).onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),pin=String(f.get('pin')||'').replace(/\D/g,'').slice(0,6);if(pin&&pin.length<4)return notify('O PIN precisa ter de 4 a 6 dígitos.');try{let photo=image;if(String(photo||'').startsWith('data:'))photo=await DDB.uploadPublicAsset(photo,'professionals');const professionalId=await DDB.saveProfessional({id:id||null,name:f.get('name'),photoPath:photo||null,instagram:f.get('instagram'),whatsapp:f.get('whatsapp'),pixKey:f.get('pixKey'),pixKeyType:null,pixHolder:f.get('name'),active:f.has('bookable')});if(pin){const snap=await DDB.adminSnapshot(),row=(snap.professionals||[]).find(x=>x.id===professionalId);if(row?.operator_id)await DDB.setOperatorPin(row.operator_id,pin);}closeModal();await bootstrapBackendPublic();await syncAdminSnapshot();renderModule();notify('Profissional salva no sistema.');}catch(err){console.error(err);notify(err.message||'Não foi possível salvar a profissional.');}}
+  const phoneField=mountInternationalPhone($('[name="whatsapp"]',root),p.whatsapp||'');
+  $('#proForm',root).onsubmit=async e=>{e.preventDefault();const f=new FormData(e.target),pin=String(f.get('pin')||'').replace(/\D/g,'').slice(0,6);if(pin&&pin.length<4)return notify('O PIN precisa ter de 4 a 6 dígitos.');if(phoneField.getNumber()&&!phoneField.isValid())return notify('Confira o WhatsApp da profissional, com país e DDD.','Telefone');try{let photo=image;if(String(photo||'').startsWith('data:'))photo=await DDB.uploadPublicAsset(photo,'professionals');const professionalId=await DDB.saveProfessional({id:id||null,name:f.get('name'),photoPath:photo||null,instagram:f.get('instagram'),whatsapp:phoneField.getNumber(),pixKey:f.get('pixKey'),pixKeyType:null,pixHolder:f.get('name'),active:f.has('bookable')});if(pin){const snap=await DDB.adminSnapshot(),row=(snap.professionals||[]).find(x=>x.id===professionalId);if(row?.operator_id)await DDB.setOperatorPin(row.operator_id,pin);}closeModal();await bootstrapBackendPublic();await syncAdminSnapshot();renderModule();notify('Profissional salva no sistema.');}catch(err){console.error(err);notify(err.message||'Não foi possível salvar a profissional.');}}
  });
 }
 
@@ -1740,6 +1785,7 @@ function bindSettings(){
  $('[data-save-general]').onclick=async()=>{try{const hours=Number($('#cancelHours').value||24),text=$('#consentStandardText').value.trim(),version=$('#consentVersion').value.trim()||'1.0';await DDB.saveSetting('cancellation_hours',hours);await DDB.saveSetting('consent_standard_version',version);await DDB.saveSetting('consent_standard_text',text);getState().settings.cancelHours=hours;getState().settings.consentStandardText=text;getState().settings.consentVersion=version;saveState();notify(text?'Regras salvas.':'Regras salvas. O agendamento público ficará bloqueado até configurar o texto do consentimento.');}catch(e){notify(e.message||'Não foi possível salvar as regras.');}};
  $('[data-save-messages]').onclick=async()=>{const map={fee:'deposit_charge',confirm:'confirmation',cancel:'cancellation',reschedule:'reschedule',reminder:'reminder',opening:'open_slot',nonRecommended:'not_recommended',refundCompleted:'refund_completed'};try{for(const x of $$('[data-message]')){await DDB.saveWhatsappTemplate(map[x.dataset.message],x.value);getState().settings.messages[x.dataset.message]=x.value;}saveState();notify('Mensagens salvas.');}catch(e){notify(e.message||'Não foi possível salvar as mensagens.');}};
 }
+
 /* === 60-admin.js: end === */
 
 /* === 70-integration.js: begin === */
@@ -2062,6 +2108,7 @@ function openClientProfileEditor(field,user,appointments,remove){
     '<label>Senha atual da conta *<input type="password" id="clientProfilePassword" autocomplete="current-password"></label>'+
     '<button type="button" class="btn gold" id="clientProfileSave">'+(remove?'Confirmar exclusão':'Salvar alteração')+'</button><p class="muted" id="clientProfileFeedback" role="status"></p>',
     root=>{
+      const phoneField=field==='phone'&&!remove?mountInternationalPhone($('#clientProfileValue',root),value):null;
       const button=$('#clientProfileSave',root);
       button.onclick=async()=>{
         if(button.disabled)return;
@@ -2069,11 +2116,8 @@ function openClientProfileEditor(field,user,appointments,remove){
         if(!remove&&field==='name'&&(!next||next.length>150))
           return $('#clientProfileFeedback',root).textContent='Informe um nome válido.';
         if(!remove&&field==='phone'){
-          next=canonicalContactPhone(next);
-          const digits=phoneKey(next);
-          if(!next.startsWith('+')||digits.length<9||digits.length>15||
-             (digits.startsWith('55')&&!([12,13].includes(digits.length))))
-            return $('#clientProfileFeedback',root).textContent='Informe WhatsApp com DDI e DDD válidos.';
+          if(!phoneField?.isValid())return $('#clientProfileFeedback',root).textContent='Selecione o país e informe WhatsApp com DDI e DDD válidos.';
+          next=phoneField.getNumber();
         }
         if(!remove&&field==='email'&&!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(next))
           return $('#clientProfileFeedback',root).textContent='Informe um e-mail válido.';
