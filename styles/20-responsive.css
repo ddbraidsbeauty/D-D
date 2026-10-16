@@ -156,3 +156,28 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
 .client-profile-row strong{display:block;overflow-wrap:anywhere}
 .client-profile-row .actions{display:flex;flex-wrap:wrap;gap:.5rem}
 @media(max-width:600px){.client-profile-row{flex-direction:column;align-items:stretch}.client-profile-row .actions{justify-content:flex-start}.client-profile-row .actions .btn{min-height:40px}}
+
+/* Modals: always stack form labels and their controls, on every viewport. */
+.modalbox{max-height:calc(100dvh - 20px);overflow-y:auto;overflow-x:visible}
+.modalbox #modalBody{display:grid;gap:clamp(12px,2vw,18px);min-width:0}
+.modalbox #modalBody>label,
+.modalbox #modalBody .form>label,
+.modalbox #modalBody .form-grid>label{display:grid;grid-template-columns:minmax(0,1fr);gap:7px;min-width:0;max-width:100%}
+.modalbox #modalBody .form-grid{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;min-width:0}
+.modalbox #modalBody input:not([type="checkbox"]):not([type="radio"]):not([type="file"]),
+.modalbox #modalBody select,
+.modalbox #modalBody textarea{width:100%;max-width:100%;min-width:0;box-sizing:border-box}
+.modalbox #modalBody .iti{width:100%;display:block;min-width:0}
+.modalbox #modalBody .iti input{width:100%;min-width:0}
+.modalbox #modalBody .iti__dropdown-content{z-index:110;background:var(--solid);color:var(--text);border-color:var(--line)}
+.modalbox #modalBody .iti__search-input{color:var(--text);background:var(--solid)}
+/* International country dropdown is portaled outside scrollable modal. */
+.iti--container{z-index:180}
+.iti--container .iti__dropdown-content{background:var(--solid);color:var(--text);border-color:var(--line)}
+.iti--container .iti__search-input{background:var(--solid);color:var(--text)}
+.modalbox #modalBody .modal-actions{display:flex;flex-wrap:wrap;gap:10px}
+@media(max-width:600px){
+  .modalbox #modalBody .modal-actions .btn{flex:1 1 150px}
+  .modalbox #modalBody>button.btn,
+  .modalbox #modalBody>.form>button.btn{width:100%}
+}
