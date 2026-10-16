@@ -10,6 +10,7 @@ let currentClientContactOwnerId = null;
 let clientHasSavedContact = false;
 let clientHadPreviousContact = false;
 let clientContactEditing = true;
+let clientContactOriginal = null;
 let bookingPhoneInputInstance = null;
 let bookingEntryChoiceOpen = false;
 // Preferência provisória exibida antes do procedimento e da profissional.
@@ -142,13 +143,15 @@ function initPublic(){
   DDB.sb.auth.onAuthStateChange((event,session)=>{
     if(event==='SIGNED_OUT'||(
       (event==='SIGNED_IN'||event==='INITIAL_SESSION') &&
-      session?.user?.id!==currentClientHairProfileOwnerId
+      session?.user?.id!==currentClientHairProfileOwnerId &&
+      session?.user?.id!==currentClientContactOwnerId
     )){
       currentClientHairProfile=null;
       currentClientHairProfileOwnerId=null;
       currentClientContactOwnerId=null;
       clientHasSavedContact=false;
       clientHadPreviousContact=false;
+      clientContactOriginal=null;
       clientContactEditing=true;
     }
     if(event==='PASSWORD_RECOVERY'){
@@ -234,7 +237,7 @@ function openFreshBooking(procedureId='',prefill=null){
     const month=new Date(prefill.date+'T12:00:00');
     booking.calendarYear=month.getFullYear();booking.calendarMonth=month.getMonth();
   }
-  currentClientContactOwnerId=null;clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
+  currentClientContactOwnerId=null;clientHasSavedContact=false;clientHadPreviousContact=false;clientContactOriginal=null;clientContactEditing=true;
   clearPendingBookingDraft();
   if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
 }
@@ -397,7 +400,7 @@ async function loadVerifiedClientContact(session){
   if(currentClientContactOwnerId===userId&&(booking.clientName||booking.phone))return;
   if(currentClientContactOwnerId!==userId){
     booking.clientName='';booking.phone='';booking.email='';
-    clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
+    clientHasSavedContact=false;clientHadPreviousContact=false;clientContactOriginal=null;clientContactEditing=true;
   }
   // Saved contact details in Auth must keep working even when an unrelated
   // appointments query is unavailable or restricted by RLS.
@@ -414,6 +417,7 @@ async function loadVerifiedClientContact(session){
   booking.clientName=previousName==='Cliente'?'':previousName;
   booking.phone=canonicalContactPhone(previousPhone);
   booking.email=String(session.user.email||'');
+  clientContactOriginal={name:booking.clientName.trim(),phone:booking.phone,email:booking.email};
   clientHadPreviousContact=!!(recent||has('name')||has('phone'));
   clientHasSavedContact=!!(booking.clientName.trim()&&bookingContactPhoneValid());
   clientContactEditing=!clientHasSavedContact;
@@ -431,7 +435,7 @@ function renderClientContactStep(){
     <label>Nome completo *<input data-booking-field="clientName" autocomplete="name" value="${esc(booking.clientName)}"></label>
     <label>WhatsApp *<input type="tel" id="bookingPhoneInput" data-booking-field="phone" autocomplete="tel" inputmode="tel" aria-label="WhatsApp com DDI e país" value="${esc(booking.phone)}"></label>
     <label>E-mail da conta<input type="email" value="${esc(booking.email)}" readonly><span class="contact-help">Altere o e-mail com sua senha no Portal Cliente.</span></label>
-    ${clientHadPreviousContact?'<label>Senha atual da conta *<input type="password" id="bookingContactPassword" autocomplete="current-password" required><span class="contact-help">Necessária para atualizar dados salvos.</span></label>':''}
+    <p class="muted contact-help">Se você alterar seus dados, pediremos sua senha em uma janela de confirmação.</p>
   </div>`;
 }
 function syncBookingPhoneFromVisibleField(){
@@ -500,24 +504,91 @@ function bookingContactPhoneValid(){
   if(digits.startsWith('55'))return digits.length===12||digits.length===13;
   return true;
 }
+function clientContactWasChanged(){
+  if(!clientHadPreviousContact||!clientContactOriginal)return false;
+  const before=clientContactOriginal;
+  return booking.clientName.trim()!==String(before.name||'').trim()
+    ||canonicalContactPhone(booking.phone)!==canonicalContactPhone(before.phone);
+}
+// The password is requested only for a real change to saved contact data.
+// Do not put account passwords into the booking form or persist them in drafts.
+function confirmBookingContactChange(userId){
+  return new Promise(resolve=>{
+    let settled=false;
+    openModal('Confirmar alteração dos dados',
+      '<p class="muted">Você alterou seus dados de contato. Informe sua senha atual para autorizar a atualização.</p>'+
+      '<label>Senha atual da conta *<input id="bookingContactConfirmPassword" type="password" autocomplete="current-password"></label>'+
+      '<div class="modal-actions"><button class="btn" type="button" id="bookingContactCancel">Voltar</button>'+
+      '<button class="btn gold" type="button" id="bookingContactAuthorize">Confirmar alteração</button></div>'+
+      '<p class="muted" id="bookingContactFeedback" role="status"></p>',
+      root=>{
+        const confirm=$('#bookingContactAuthorize',root),password=$('#bookingContactConfirmPassword',root);
+        const finish=ok=>{
+          if(settled)return;
+          settled=true;
+          $('#closeModal').removeEventListener('click',onDismiss);
+          $('#modal').removeEventListener('click',onBackdrop);
+          document.removeEventListener('keydown',onEscape);
+          closeModal();
+          resolve(ok);
+        };
+        const onDismiss=()=>finish(false);
+        const onBackdrop=e=>{if(e.target.id==='modal')finish(false)};
+        const onEscape=e=>{if(e.key==='Escape')finish(false)};
+        $('#closeModal').addEventListener('click',onDismiss);
+        $('#modal').addEventListener('click',onBackdrop);
+        document.addEventListener('keydown',onEscape);
+        $('#bookingContactCancel',root).onclick=()=>finish(false);
+        confirm.onclick=async()=>{
+          if(confirm.disabled)return;
+          if(!password.value){
+            $('#bookingContactFeedback',root).textContent='Informe sua senha atual.';
+            return;
+          }
+          confirm.disabled=true;
+          try{
+            await verifyClientAccountPassword(password.value,userId);
+            finish(true);
+          }catch(error){
+            $('#bookingContactFeedback',root).textContent=error?.message||'Não foi possível confirmar a senha.';
+            password.value='';
+            confirm.disabled=false;
+          }
+        };
+        password.addEventListener('keydown',e=>{
+          if(e.key==='Enter'){e.preventDefault();confirm.click();}
+        });
+        password.focus();
+      }
+    );
+  });
+}
 async function saveVerifiedClientContact(session){
   const userId=session?.user?.id;
-  if(!userId||currentClientContactOwnerId!==userId)throw new Error('A conta mudou. Confira os dados e entre novamente.');
-  const identity=await DDB.sb.auth.getUser();
-  if(identity.error||identity.data?.user?.id!==userId)throw new Error('Sua sessão mudou. Entre novamente.');
-  if(clientHadPreviousContact&&clientContactEditing){
-    const password=$('#bookingContactPassword')?.value||'';
-    if(!password)throw new Error('Informe sua senha atual para alterar seus dados.');
-    await verifyClientAccountPassword(password,userId);
-  }
+  if(!userId||currentClientContactOwnerId!==userId)
+    throw new Error('A conta mudou. Confira os dados e entre novamente.');
   syncBookingPhoneFromVisibleField();
+  if(!booking.clientName.trim()||!bookingContactPhoneValid())
+    throw new Error('Confira seu nome e seu WhatsApp antes de continuar.');
+  // No password for confirmation of unchanged data, including when the user
+  // opened the editor but did not actually change any value.
+  if(clientContactWasChanged()){
+    const authorized=await confirmBookingContactChange(userId);
+    if(!authorized)return false;
+  }
+  const identity=await DDB.sb.auth.getUser();
+  if(identity.error||identity.data?.user?.id!==userId)
+    throw new Error('Sua sessão mudou. Entre novamente.');
   const contact={name:booking.clientName.trim(),phone:booking.phone,email:identity.data.user.email||''};
   const previous=identity.data.user.user_metadata?.ddb_client_contact||{};
   if(previous.name!==contact.name||previous.phone!==contact.phone||previous.email!==contact.email){
     const {error}=await DDB.sb.auth.updateUser({data:{ddb_client_contact:contact}});
     if(error)throw error;
   }
+  currentClientContactOwnerId=userId;
+  clientContactOriginal={...contact};
   clientHasSavedContact=true;clientHadPreviousContact=true;clientContactEditing=false;
+  return true;
 }
 
 function renderBooking(){
@@ -804,10 +875,17 @@ async function nextBookingStep(){
     catch(e){return notify(e.message||'Não foi possível carregar seus dados.','Seus dados');}
   }
   if(id==='client'){
+    let session;
     try{
-      const session=await ensureClientAuth();
+      session=await ensureClientAuth();
       if(!session?.user?.id)return;
-      await saveVerifiedClientContact(session);
+      const saved=await saveVerifiedClientContact(session);
+      if(!saved)return; // Client cancelled the password dialog.
+    }catch(e){
+      console.error('Não foi possível confirmar os dados da cliente:',e);
+      return notify(e?.message||'Não foi possível confirmar seus dados. Tente novamente.','Seus dados');
+    }
+    try{
       // An unsuccessful lookup must not silently be interpreted as a new client.
       const profile=await DDB.myLatestHairProfile(session.user.id);
       if(currentClientHairProfileOwnerId!==session.user.id){
