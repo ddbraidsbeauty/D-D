@@ -93,6 +93,7 @@ function mountInternationalPhone(input,initial=''){
         initialCountry:'br',
         countryOrder:['br','us','pt','gb','ar'],
         separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+        dropdownContainer:document.body,
         loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
       });
       if(initial)iti.setNumber(canonicalContactPhone(initial));
