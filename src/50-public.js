@@ -8,6 +8,7 @@ let currentClientHairProfile = null;
 let currentClientHairProfileOwnerId = null;
 let currentClientContactOwnerId = null;
 let clientHasSavedContact = false;
+let clientHadPreviousContact = false;
 let clientContactEditing = true;
 let bookingPhoneInputInstance = null;
 let bookingEntryChoiceOpen = false;
@@ -147,6 +148,7 @@ function initPublic(){
       currentClientHairProfileOwnerId=null;
       currentClientContactOwnerId=null;
       clientHasSavedContact=false;
+      clientHadPreviousContact=false;
       clientContactEditing=true;
     }
     if(event==='PASSWORD_RECOVERY'){
@@ -232,7 +234,7 @@ function openFreshBooking(procedureId='',prefill=null){
     const month=new Date(prefill.date+'T12:00:00');
     booking.calendarYear=month.getFullYear();booking.calendarMonth=month.getMonth();
   }
-  currentClientContactOwnerId=null;clientHasSavedContact=false;clientContactEditing=true;
+  currentClientContactOwnerId=null;clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
   clearPendingBookingDraft();
   if(location.hash==='#booking')renderPublicRoute();else location.hash='#booking';
 }
@@ -395,18 +397,21 @@ async function loadVerifiedClientContact(session){
   if(currentClientContactOwnerId===userId&&(booking.clientName||booking.phone))return;
   if(currentClientContactOwnerId!==userId){
     booking.clientName='';booking.phone='';booking.email='';
-    clientHasSavedContact=false;clientContactEditing=true;
+    clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
   }
   const appointments=(await DDB.myAppointments()).filter(a=>a.client_id===userId);
   const recent=appointments[0]||null;
   const saved=session.user.user_metadata?.ddb_client_contact||{};
-  const previousName=String(saved.name||recent?.client_name||session.user.user_metadata?.full_name||'');
-  const previousPhone=String(saved.phone||recent?.client_phone||'');
-  const previousEmail=String(saved.email||recent?.client_email||session.user.email||'');
+  // Current booking records use *_snapshot fields. An old booking does not
+  // prove that its saved contact data are valid.
+  const has=key=>Object.prototype.hasOwnProperty.call(saved,key);
+  const previousName=String(has('name')?saved.name:(recent?.client_name_snapshot||recent?.client_name||session.user.user_metadata?.full_name||''));
+  const previousPhone=String(has('phone')?saved.phone:(recent?.client_phone_snapshot||recent?.client_phone||''));
   booking.clientName=previousName==='Cliente'?'':previousName;
   booking.phone=canonicalContactPhone(previousPhone);
-  booking.email=previousEmail;
-  clientHasSavedContact=!!(recent||saved.phone);
+  booking.email=String(session.user.email||'');
+  clientHadPreviousContact=!!(recent||has('name')||has('phone'));
+  clientHasSavedContact=!!(booking.clientName.trim()&&bookingContactPhoneValid());
   clientContactEditing=!clientHasSavedContact;
   currentClientContactOwnerId=userId;
 }
@@ -421,7 +426,8 @@ function renderClientContactStep(){
   return `<div class="form-grid client-contact-form">
     <label>Nome completo *<input data-booking-field="clientName" autocomplete="name" value="${esc(booking.clientName)}"></label>
     <label>WhatsApp *<input type="tel" id="bookingPhoneInput" data-booking-field="phone" autocomplete="tel" inputmode="tel" aria-label="WhatsApp com DDI e país" value="${esc(booking.phone)}"></label>
-    <label>E-mail de contato<input type="email" data-booking-field="email" autocomplete="email" value="${esc(booking.email)}"><span class="contact-help">O e-mail de contato não altera o login da conta.</span></label>
+    <label>E-mail da conta<input type="email" value="${esc(booking.email)}" readonly><span class="contact-help">Altere o e-mail com sua senha no Portal Cliente.</span></label>
+    ${clientHadPreviousContact?'<label>Senha atual da conta *<input type="password" id="bookingContactPassword" autocomplete="current-password" required><span class="contact-help">Necessária para atualizar dados salvos.</span></label>':''}
   </div>`;
 }
 function initBookingPhoneInput(){
@@ -465,13 +471,18 @@ async function saveVerifiedClientContact(session){
   if(!userId||currentClientContactOwnerId!==userId)throw new Error('A conta mudou. Confira os dados e entre novamente.');
   const identity=await DDB.sb.auth.getUser();
   if(identity.error||identity.data?.user?.id!==userId)throw new Error('Sua sessão mudou. Entre novamente.');
-  const contact={name:booking.clientName.trim(),phone:booking.phone,email:booking.email.trim()};
+  if(clientHadPreviousContact&&clientContactEditing){
+    const password=$('#bookingContactPassword')?.value||'';
+    if(!password)throw new Error('Informe sua senha atual para alterar seus dados.');
+    await verifyClientAccountPassword(password,userId);
+  }
+  const contact={name:booking.clientName.trim(),phone:booking.phone,email:identity.data.user.email||''};
   const previous=identity.data.user.user_metadata?.ddb_client_contact||{};
   if(previous.name!==contact.name||previous.phone!==contact.phone||previous.email!==contact.email){
     const {error}=await DDB.sb.auth.updateUser({data:{ddb_client_contact:contact}});
     if(error)throw error;
   }
-  clientHasSavedContact=true;clientContactEditing=false;
+  clientHasSavedContact=true;clientHadPreviousContact=true;clientContactEditing=false;
 }
 
 function renderBooking(){
