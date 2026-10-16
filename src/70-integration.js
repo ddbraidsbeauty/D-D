@@ -367,7 +367,8 @@ function openClientProfileEditor(field,user,appointments,remove){
 }
 
 async function renderAccount(){
- const box=$('#accountList'),controls=$('#accountAuthControls');if(!window.DDB||!box)return;
+ const box=$('#accountList'),controls=$('#accountAuthControls'),profileBox=$('#accountProfile');if(!window.DDB||!box)return;
+ if(profileBox)profileBox.replaceChildren();
  if(adminPreviewMode){
    controls?.replaceChildren();
    box.innerHTML='<div class="glass panel"><h2>Visualização administrativa</h2><p class="muted">Você está visualizando o site como visitante. Para consultar clientes ou gerenciar atendimentos, volte ao painel administrativo.</p><button class="btn gold" type="button" id="returnAdminFromAccount">Voltar ao painel</button></div>';
@@ -398,7 +399,20 @@ async function renderAccount(){
    };
  }
  if(!s){box.innerHTML=`<div class="glass panel"><h2>Entre na sua conta</h2><p class="muted">Use o e-mail e a senha cadastrados no agendamento.</p><button class="btn gold" id="accountLoginBtn">Entrar / criar conta</button></div>`;$('#accountLoginBtn').onclick=async()=>{if(await authModal(''))renderAccount();};return;}
- try{const list=await DDB.myAppointments();const fresh=await DDB.sb.auth.getUser();const currentUser=fresh.data?.user?.id===s.user.id?fresh.data.user:s.user;const profileHTML=clientProfileMarkup(currentUser,list);box.innerHTML=profileHTML+list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';bindClientProfileControls(box,currentUser,list);$('.account-cancel').forEach(b=>b.onclick=()=>{
+ try{
+  let list=[],appointmentsError=null;
+  try{list=await DDB.myAppointments();}catch(error){
+    appointmentsError=error;
+    console.error('Falha na consulta dos agendamentos da conta:',error);
+  }
+  let fresh=null;
+  try{fresh=await DDB.sb.auth.getUser();}catch(error){console.warn('Dados recentes da conta indisponíveis:',error);}
+  const currentUser=fresh?.data?.user?.id===s.user.id?fresh.data.user:s.user;
+  // Account details must render even when the appointments query fails.
+  if(profileBox)profileBox.innerHTML=clientProfileMarkup(currentUser,list);
+  box.innerHTML=appointmentsError
+    ?'<div class="empty-state">Não foi possível consultar os agendamentos agora. Seus dados da conta estão disponíveis acima. Atualize para tentar novamente.</div>'
+    :list.map(a=>`<article class="glass account-item"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>${esc(a.professional_name_snapshot||'')} • ${a.scheduled_start?new Date(a.scheduled_start).toLocaleDateString('pt-BR'):'—'}</span><span class="status ${esc(a.status)}">${esc(statusLabel({status:a.status,bookingFeePaid:a.deposit_status==='paid'}))}</span>${Number(a.deposit_amount||0)>0?`<span class="fee-account ${a.deposit_status==='paid'?'paid':'pending'}">${esc(clientDepositLabel(a.deposit_status))} • ${money(a.deposit_amount)}</span>`:''}</div><div class="actions">${!a.hair_profile_id&&['awaiting_fee','fee_sent','pending_review'].includes(a.status)?`<button class="btn small gold account-complete-hair" data-id="${a.id}">Completar ficha capilar</button>`:''}${a.status==='confirmed' && getState().rc7Installed?`<button class="btn small account-reschedule" data-id="${a.id}">Solicitar remarcação</button>`:''}${!['cancelled','completed','rejected','no_show'].includes(a.status)?`<button class="btn small danger account-cancel" data-id="${a.id}">Cancelar</button>`:''}</div></article>`).join('')||'<div class="empty-state">Nenhuma solicitação encontrada.</div>';bindClientProfileControls(profileBox||box,currentUser,list);if(appointmentsError)return;$('.account-cancel').forEach(b=>b.onclick=()=>{
     const selected=list.find(a=>String(a.id)===String(b.dataset.id));
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
@@ -423,7 +437,7 @@ async function renderAccount(){
       }
     });
   });$$('.account-complete-hair').forEach(b=>b.onclick=()=>openMissingHairProfile(b.dataset.id));$$('.account-reschedule').forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.requestWaitlist(b.dataset.id);notify('Solicitação registrada na lista de espera.');renderAccount();}catch(e){notify(e.message||'Não foi possível solicitar a remarcação.');}finally{b.disabled=false;}});
-  await window.DDBraidsRC7?.renderAccount(box,list);}catch(e){box.innerHTML=`<div class="empty-state">Não foi possível carregar seus agendamentos.</div>`;}
+  await window.DDBraidsRC7?.renderAccount(box,list);}catch(e){console.error('Erro ao montar o Portal Cliente:',e);box.innerHTML=`<div class="empty-state">Não foi possível carregar seus agendamentos. Atualize para tentar novamente.</div>`;}
 }
 async function renderSpecificConsent(){
  const body=$('#specificConsentBody'), token=paramsFromHash().get('token'); if(!body)return;
