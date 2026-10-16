@@ -399,7 +399,11 @@ async function loadVerifiedClientContact(session){
     booking.clientName='';booking.phone='';booking.email='';
     clientHasSavedContact=false;clientHadPreviousContact=false;clientContactEditing=true;
   }
-  const appointments=(await DDB.myAppointments()).filter(a=>a.client_id===userId);
+  // Saved contact details in Auth must keep working even when an unrelated
+  // appointments query is unavailable or restricted by RLS.
+  let appointments=[];
+  try{appointments=(await DDB.myAppointments()).filter(a=>a.client_id===userId);}
+  catch(error){console.warn('Histórico indisponível; utilizando dados da conta:',error?.code||error?.message||'consulta');}
   const recent=appointments[0]||null;
   const saved=session.user.user_metadata?.ddb_client_contact||{};
   // Current booking records use *_snapshot fields. An old booking does not
@@ -430,6 +434,34 @@ function renderClientContactStep(){
     ${clientHadPreviousContact?'<label>Senha atual da conta *<input type="password" id="bookingContactPassword" autocomplete="current-password" required><span class="contact-help">Necessária para atualizar dados salvos.</span></label>':''}
   </div>`;
 }
+function syncBookingPhoneFromVisibleField(){
+  const input=$('#bookingPhoneInput');
+  if(!input)return booking.phone;
+  const raw=String(input.value||'').trim(),digits=phoneKey(raw);
+  if(!digits){booking.phone='';return booking.phone;}
+  const selected=bookingPhoneInputInstance?.getSelectedCountryData?.();
+  const dial=phoneKey(String(selected?.dialCode||''));
+  // Preserve an explicitly typed international number, even if the flag
+  // selector has not yet caught up with the user's input.
+  if(raw.startsWith('+')){
+    booking.phone='+'+digits;return booking.phone;
+  }
+  if(raw.startsWith('00')&&digits.length>10){
+    booking.phone='+'+digits.slice(2);return booking.phone;
+  }
+  if(dial==='55'){
+    // Brazil: DDI + DDD + 8/9 digits. An unprefixed input has 10/11
+    // digits; never append +55 twice to a full international number.
+    booking.phone=digits.startsWith('55')&&[12,13].includes(digits.length)
+      ?'+'+digits:'+'+dial+digits;
+  }else if(dial){
+    booking.phone=dial==='1'&&digits.startsWith('1')&&digits.length===11
+      ?'+'+digits:'+'+dial+digits;
+  }else{
+    booking.phone=canonicalContactPhone(raw);
+  }
+  return booking.phone;
+}
 function initBookingPhoneInput(){
   const input=$('#bookingPhoneInput');
   if(!input)return;
@@ -445,22 +477,24 @@ function initBookingPhoneInput(){
   });
   bookingPhoneInputInstance=iti;
   if(booking.phone)iti.setNumber(canonicalContactPhone(booking.phone));
-  const update=()=>{
-    const dial=String(iti.getSelectedCountryData()?.dialCode||'');
-    const national=phoneKey(input.value);
-    booking.phone=national&&dial?'+'+dial+national:(national&&input.value.trim().startsWith('+')?'+'+national:'');
-    const fromPlugin=iti.getNumber();
-    if(national&&fromPlugin?.startsWith('+')&&phoneKey(fromPlugin).length<=15)booking.phone=fromPlugin;
-  };
+  const update=()=>syncBookingPhoneFromVisibleField();
   input.addEventListener('input',update);
+  input.addEventListener('change',update);
+  input.addEventListener('blur',update);
   input.addEventListener('countrychange',update);
   iti.promise?.then(()=>{
-    if(bookingPhoneInputInstance===iti&&input.isConnected&&booking.phone){
-      iti.setNumber(booking.phone);update();
+    if(bookingPhoneInputInstance===iti&&input.isConnected){
+      // Utilities may finish loading after the customer has already typed.
+      // Do not overwrite their input with an earlier saved phone.
+      syncBookingPhoneFromVisibleField();
     }
-  }).catch(e=>console.warn('Formatação internacional avançada indisponível:',e));
+  }).catch(error=>console.warn('Formatação telefônica avançada indisponível:',error));
+  syncBookingPhoneFromVisibleField();
 }
 function bookingContactPhoneValid(){
+  // Read the live input before validation; phone masks on iOS/Safari may
+  // update the visible field without emitting a standard input event.
+  syncBookingPhoneFromVisibleField();
   const phone=String(booking.phone||''),digits=phoneKey(phone);
   if(!phone.startsWith('+')||digits.length<9||digits.length>15)return false;
   if(digits.startsWith('55'))return digits.length===12||digits.length===13;
@@ -476,6 +510,7 @@ async function saveVerifiedClientContact(session){
     if(!password)throw new Error('Informe sua senha atual para alterar seus dados.');
     await verifyClientAccountPassword(password,userId);
   }
+  syncBookingPhoneFromVisibleField();
   const contact={name:booking.clientName.trim(),phone:booking.phone,email:identity.data.user.email||''};
   const previous=identity.data.user.user_metadata?.ddb_client_contact||{};
   if(previous.name!==contact.name||previous.phone!==contact.phone||previous.email!==contact.email){
@@ -724,7 +759,8 @@ function validateStep(id){
   if(id==='professional'&&!booking.professionalId) return 'Escolha uma profissional.';
   if(id==='date'&&!booking.date) return 'Escolha uma data.';
   if(id==='date'&&!isMaintenanceBooking(booking)&&!booking.time) return 'Escolha um horário disponível.';
-  if(id==='client'&&(!booking.clientName.trim()||!bookingContactPhoneValid())) return 'Preencha nome e WhatsApp com país e DDD corretamente.';
+  if(id==='client'&&!booking.clientName.trim()) return 'Preencha seu nome completo.';
+  if(id==='client'&&!bookingContactPhoneValid()) return 'Confira o WhatsApp: selecione o país e informe DDD e número completo.';
   if(id==='anamnesis'){
     const old=clientCurrentAnamnesis(); if(old&&booking.hairChange===null) return 'Informe se houve alteração capilar desde a última avaliação.';
     if(booking.anamnesisMode==='new'||!old){ const x=booking.anamnesis; const keys=['hairType','classification','naturalColor','lighteningBackground','density','texture','characteristic','resistance','porosity','elasticity','recentChemistry']; if(keys.some(k=>!String(x[k]||'').trim())||!x.heatUse.length||!x.problems.length) return 'Preencha todos os campos obrigatórios da anamnese.'; if(!HAIR_PATTERNS.includes(String(x.classification||'').trim().toUpperCase())||x.hairType!==hairTypeForPattern(x.classification))return 'Escolha uma classificação capilar nas imagens.'; }
