@@ -439,32 +439,15 @@ function renderClientContactStep(){
   </div>`;
 }
 function syncBookingPhoneFromVisibleField(){
-  const input=$('#bookingPhoneInput');
-  if(!input)return booking.phone;
-  const raw=String(input.value||'').trim(),digits=phoneKey(raw);
-  if(!digits){booking.phone='';return booking.phone;}
-  const selected=bookingPhoneInputInstance?.getSelectedCountryData?.();
-  const dial=phoneKey(String(selected?.dialCode||''));
-  // Preserve an explicitly typed international number, even if the flag
-  // selector has not yet caught up with the user's input.
-  if(raw.startsWith('+')){
-    booking.phone='+'+digits;return booking.phone;
-  }
-  if(raw.startsWith('00')&&digits.length>10){
-    booking.phone='+'+digits.slice(2);return booking.phone;
-  }
-  if(dial==='55'){
-    // Brazil: DDI + DDD + 8/9 digits. An unprefixed input has 10/11
-    // digits; never append +55 twice to a full international number.
-    booking.phone=digits.startsWith('55')&&[12,13].includes(digits.length)
-      ?'+'+digits:'+'+dial+digits;
-  }else if(dial){
-    booking.phone=dial==='1'&&digits.startsWith('1')&&digits.length===11
-      ?'+'+digits:'+'+dial+digits;
-  }else{
-    booking.phone=canonicalContactPhone(raw);
-  }
-  return booking.phone;
+ const input=$('#bookingPhoneInput');
+ if(!input)return booking.phone;
+ booking.phone=phoneInputE164(input,bookingPhoneInputInstance);
+ const iti=bookingPhoneInputInstance,iso2=selectedPhoneCountry(iti)?.iso2||'';
+ if(iti?.isValidNumber?.()&&iti?.getNumber){
+  const parsed=iti.getNumber();
+  if(internationalPhoneValid(parsed,iso2))booking.phone=parsed;
+ }
+ return booking.phone;
 }
 function initBookingPhoneInput(){
   const input=$('#bookingPhoneInput');
@@ -477,6 +460,7 @@ function initBookingPhoneInput(){
   const iti=window.intlTelInput(input,{
     initialCountry:'br',countryOrder:['br','us','pt','gb','ar'],
     separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+    formatAsYouType:true,
     loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
   });
   bookingPhoneInputInstance=iti;
@@ -496,13 +480,12 @@ function initBookingPhoneInput(){
   syncBookingPhoneFromVisibleField();
 }
 function bookingContactPhoneValid(){
-  // Read the live input before validation; phone masks on iOS/Safari may
-  // update the visible field without emitting a standard input event.
-  syncBookingPhoneFromVisibleField();
-  const phone=String(booking.phone||''),digits=phoneKey(phone);
-  if(!phone.startsWith('+')||digits.length<9||digits.length>15)return false;
-  if(digits.startsWith('55'))return digits.length===12||digits.length===13;
-  return true;
+ syncBookingPhoneFromVisibleField();
+ const iti=bookingPhoneInputInstance,iso2=selectedPhoneCountry(iti)?.iso2||'';
+ if(!internationalPhoneValid(booking.phone,iso2))return false;
+ if(iti&&window.intlTelInput?.utils&&typeof iti.isValidNumber==='function')
+  return !!iti.isValidNumber();
+ return true;
 }
 function clientContactWasChanged(){
   if(!clientHadPreviousContact||!clientContactOriginal)return false;

@@ -93,68 +93,94 @@ function refreshUpload(id,value){
 }
 
 // Numbers stored by the new booking form always include their country code.
+// E.164 is stored for new contacts. Unprefixed LEGACY records default to BR;
+// the editor/booking fields never infer a country without the selected flag.
 function canonicalContactPhone(value){
-  const raw=String(value||'').trim(), digits=phoneKey(raw);
-  if(!digits)return '';
-  if(raw.startsWith('+'))return '+'+digits;
-  if(digits.length===10||digits.length===11)return '+55'+digits;
-  if(digits.startsWith('55')&&(digits.length===12||digits.length===13))return '+'+digits;
-  return '+'+digits;
+ const raw=String(value||'').trim(),digits=phoneKey(raw);
+ if(!digits)return '';
+ if(raw.startsWith('+'))return '+'+digits;
+ if(raw.startsWith('00')&&digits.length>10)return '+'+digits.slice(2);
+ if(digits.startsWith('55')&&[12,13].includes(digits.length))return '+'+digits;
+ if([10,11].includes(digits.length))return '+55'+digits;
+ return '+'+digits;
 }
-// Shared international telephone control for every editable phone field.
-// Uses the same Brazil-first country selector as the booking step.
+function selectedPhoneCountry(iti){
+ return iti?.getSelectedCountry?.()||iti?.getSelectedCountryData?.()||null;
+}
+function phoneInputE164(input,iti){
+ const raw=String(input?.value||'').trim(),digits=phoneKey(raw);
+ if(!digits)return '';
+ if(raw.startsWith('+'))return '+'+digits;
+ if(raw.startsWith('00')&&digits.length>10)return '+'+digits.slice(2);
+ const dial=phoneKey(selectedPhoneCountry(iti)?.dialCode||'');
+ if(!dial)return '';
+ if(dial==='55'&&digits.startsWith('55')&&[12,13].includes(digits.length))return '+'+digits;
+ if(dial==='1'&&digits.startsWith('1')&&digits.length===11)return '+'+digits;
+ return '+'+dial+digits;
+}
+function internationalPhoneValid(number,iso2=''){
+ const digits=phoneKey(number);
+ if(!String(number||'').startsWith('+')||digits.length<8||digits.length>15||digits[0]==='0')return false;
+ if(iso2==='br'||digits.startsWith('55'))return digits.startsWith('55')&&[12,13].includes(digits.length);
+ if(iso2==='us'||iso2==='ca'||digits.startsWith('1'))return digits.startsWith('1')&&digits.length===11;
+ return true;
+}
 function mountInternationalPhone(input,initial=''){
-  if(!input)return {getNumber:()=>'',isValid:()=>false};
-  input.type='tel';
-  input.autocomplete='tel';
-  input.inputMode='tel';
-  input.setAttribute('aria-label','WhatsApp com DDI e DDD');
-  input.placeholder='+55 (33) 99999-9999';
-  let iti=null;
-  if(typeof window.intlTelInput==='function'){
-    try{
-      iti=window.intlTelInput(input,{
-        initialCountry:'br',
-        countryOrder:['br','us','pt','gb','ar'],
-        separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
-        dropdownContainer:document.body,
-        loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
-      });
-      if(initial)iti.setNumber(canonicalContactPhone(initial));
-    }catch(error){console.warn('Seletor internacional indisponível:',error);iti=null;}
+ if(!input)return {getNumber:()=>'',isValid:()=>false};
+ input.type='tel';input.autocomplete='tel';input.inputMode='tel';
+ input.setAttribute('aria-label','WhatsApp com seleção de país');
+ let iti=null;
+ if(typeof window.intlTelInput==='function'){
+  try{
+   iti=window.intlTelInput(input,{
+    initialCountry:'br',countryOrder:['br','us','pt','gb','ar'],
+    separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+    formatAsYouType:true,dropdownContainer:document.body,
+    loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
+   });
+   if(initial)iti.setNumber(canonicalContactPhone(initial));
+  }catch(error){console.warn('Seletor internacional indisponível:',error);iti=null;}
+ }
+ if(!iti){
+  input.placeholder='+55 (11) 98765-4321 (inclua o DDI)';
+  input.value=initial?canonicalContactPhone(initial):'';
+ }
+ const getNumber=()=>{
+  if(!String(input.value||'').trim())return '';
+  const normalized=phoneInputE164(input,iti),iso2=selectedPhoneCountry(iti)?.iso2||'';
+  if(iti?.isValidNumber?.()&&iti?.getNumber){
+   const parsed=iti.getNumber();
+   if(internationalPhoneValid(parsed,iso2))return parsed;
   }
-  if(!iti)input.value=canonicalContactPhone(initial);
-  const getNumber=()=>{
-    const raw=String(input.value||'').trim();
-    const digits=phoneKey(raw);
-    if(!digits)return '';
-    if(raw.startsWith('+'))return '+'+digits;
-    if(raw.startsWith('00')&&digits.length>10)return '+'+digits.slice(2);
-    const dial=phoneKey(iti?.getSelectedCountryData?.()?.dialCode||'55');
-    if(dial==='55'&&digits.startsWith('55')&&[12,13].includes(digits.length))
-      return '+'+digits;
-    if(dial==='1'&&digits.startsWith('1')&&digits.length===11)
-      return '+'+digits;
-    return '+'+dial+digits;
-  };
-  const isValid=()=>{
-    const number=getNumber(),digits=phoneKey(number);
-    return number.startsWith('+')&&digits.length>=9&&digits.length<=15
-      &&(!digits.startsWith('55')||[12,13].includes(digits.length));
-  };
-  return {getNumber,isValid,destroy:()=>iti?.destroy?.()};
+  return normalized;
+ };
+ const isValid=()=>{
+  const number=getNumber(),iso2=selectedPhoneCountry(iti)?.iso2||'';
+  if(!internationalPhoneValid(number,iso2))return false;
+  if(iti&&window.intlTelInput?.utils&&typeof iti.isValidNumber==='function')
+   return !!iti.isValidNumber();
+  return true;
+ };
+ return {getNumber,isValid,destroy:()=>iti?.destroy?.()};
 }
-
 function contactPhoneDisplay(value){
-  const digits=phoneKey(canonicalContactPhone(value));
-  if(digits.startsWith('55')&&(digits.length===12||digits.length===13)){
-    const local=digits.slice(2),subscriber=local.slice(2);
-    return '+55 ('+local.slice(0,2)+') '+subscriber.slice(0,subscriber.length-4)+'-'+subscriber.slice(-4);
-  }
-  return digits?'+'+digits:'—';
+ const normalized=canonicalContactPhone(value),digits=phoneKey(normalized);
+ if(!digits)return '—';
+ if(digits.startsWith('55')&&[12,13].includes(digits.length)){
+  const local=digits.slice(2),subscriber=local.slice(2);
+  return '+55 ('+local.slice(0,2)+') '+subscriber.slice(0,-4)+'-'+subscriber.slice(-4);
+ }
+ if(digits.startsWith('1')&&digits.length===11)
+  return '+1 ('+digits.slice(1,4)+') '+digits.slice(4,7)+'-'+digits.slice(7);
+ const formatter=window.intlTelInput?.utils?.formatNumber;
+ if(typeof formatter==='function'){
+  const result=formatter(normalized,undefined,'INTERNATIONAL');
+  if(result&&result!==normalized)return result;
+ }
+ return normalized;
 }
 function whatsAppDigits(phone){return phoneKey(canonicalContactPhone(phone));}
-function waLink(phone,text){ return `https://wa.me/${whatsAppDigits(phone)}?text=${encodeURIComponent(text)}`; }
+function waLink(phone,text){return `https://wa.me/${whatsAppDigits(phone)}?text=${encodeURIComponent(text)}`; }
 function csv(v){ return String(v||'').split(',').map(x=>x.trim()).filter(Boolean); }
 function routeHash(){ const h=location.hash.replace(/^#/,''); if(/(?:^|&)access_token=|(?:^|&)refresh_token=|(?:^|&)error(?:_code|_description)?=/.test(h)) return 'booking'; return h.split('?')[0] || 'home'; }
 function paramsFromHash(){ const p=location.hash.split('?')[1]||''; return new URLSearchParams(p); }
@@ -868,32 +894,15 @@ function renderClientContactStep(){
   </div>`;
 }
 function syncBookingPhoneFromVisibleField(){
-  const input=$('#bookingPhoneInput');
-  if(!input)return booking.phone;
-  const raw=String(input.value||'').trim(),digits=phoneKey(raw);
-  if(!digits){booking.phone='';return booking.phone;}
-  const selected=bookingPhoneInputInstance?.getSelectedCountryData?.();
-  const dial=phoneKey(String(selected?.dialCode||''));
-  // Preserve an explicitly typed international number, even if the flag
-  // selector has not yet caught up with the user's input.
-  if(raw.startsWith('+')){
-    booking.phone='+'+digits;return booking.phone;
-  }
-  if(raw.startsWith('00')&&digits.length>10){
-    booking.phone='+'+digits.slice(2);return booking.phone;
-  }
-  if(dial==='55'){
-    // Brazil: DDI + DDD + 8/9 digits. An unprefixed input has 10/11
-    // digits; never append +55 twice to a full international number.
-    booking.phone=digits.startsWith('55')&&[12,13].includes(digits.length)
-      ?'+'+digits:'+'+dial+digits;
-  }else if(dial){
-    booking.phone=dial==='1'&&digits.startsWith('1')&&digits.length===11
-      ?'+'+digits:'+'+dial+digits;
-  }else{
-    booking.phone=canonicalContactPhone(raw);
-  }
-  return booking.phone;
+ const input=$('#bookingPhoneInput');
+ if(!input)return booking.phone;
+ booking.phone=phoneInputE164(input,bookingPhoneInputInstance);
+ const iti=bookingPhoneInputInstance,iso2=selectedPhoneCountry(iti)?.iso2||'';
+ if(iti?.isValidNumber?.()&&iti?.getNumber){
+  const parsed=iti.getNumber();
+  if(internationalPhoneValid(parsed,iso2))booking.phone=parsed;
+ }
+ return booking.phone;
 }
 function initBookingPhoneInput(){
   const input=$('#bookingPhoneInput');
@@ -906,6 +915,7 @@ function initBookingPhoneInput(){
   const iti=window.intlTelInput(input,{
     initialCountry:'br',countryOrder:['br','us','pt','gb','ar'],
     separateDialCode:true,countrySearch:true,countrySelectorMode:'AUTO',
+    formatAsYouType:true,
     loadUtils:()=>import('https://cdn.jsdelivr.net/npm/intl-tel-input@29.5.4/dist/js/utils.js')
   });
   bookingPhoneInputInstance=iti;
@@ -925,13 +935,12 @@ function initBookingPhoneInput(){
   syncBookingPhoneFromVisibleField();
 }
 function bookingContactPhoneValid(){
-  // Read the live input before validation; phone masks on iOS/Safari may
-  // update the visible field without emitting a standard input event.
-  syncBookingPhoneFromVisibleField();
-  const phone=String(booking.phone||''),digits=phoneKey(phone);
-  if(!phone.startsWith('+')||digits.length<9||digits.length>15)return false;
-  if(digits.startsWith('55'))return digits.length===12||digits.length===13;
-  return true;
+ syncBookingPhoneFromVisibleField();
+ const iti=bookingPhoneInputInstance,iso2=selectedPhoneCountry(iti)?.iso2||'';
+ if(!internationalPhoneValid(booking.phone,iso2))return false;
+ if(iti&&window.intlTelInput?.utils&&typeof iti.isValidNumber==='function')
+  return !!iti.isValidNumber();
+ return true;
 }
 function clientContactWasChanged(){
   if(!clientHadPreviousContact||!clientContactOriginal)return false;
