@@ -22,10 +22,10 @@ async function renderAccount(box, appointments){
   const todayMsg=(data.notifications||[]).slice().sort((a,b)=>new Date(b.created_at)-new Date(a.created_at)).slice(0,10);
   const claimable=(appointments||[]).filter(a=>a.status==='cancelled'&&a.deposit_status==='refund_pending'&&!refundBy.has(a.id));
   const available=data.available||{};
-  extra.innerHTML=`${available.ledger?`<section class="glass panel rc7-portal"><div class="between"><div><small>CARTEIRA</small><h2>Seus créditos</h2></div><strong class="rc7-balance">${money(sum)}</strong></div><p class="muted">Créditos registrados para uso na D&D. A aplicação em novos pagamentos será liberada após validação financeira no banco.</p></section>`:unavailable('Carteira')}
+  extra.innerHTML=`${available.ledger&&sum>0?`<section class="glass panel rc7-portal"><h2>Valor anterior a regularizar</h2><strong class="rc7-balance">${money(sum)}</strong><p class="muted">Este valor de operações anteriores não pode ser utilizado em novos agendamentos. Entre em contato com a D&D para regularizar a devolução via Pix.</p></section>`:''}
    ${available.waitlist?`<section class="glass panel rc7-portal"><h2>Remarcações e lista de espera</h2>${(data.waitlist||[]).map(w=>{const a=(appointments||[]).find(x=>x.id===w.appointment_id);return `<div class="row"><div><b>${esc(a?.service_name_snapshot||'Atendimento')}</b><span>Na lista desde ${date(w.joined_at)} • ${esc(w.status)}</span></div></div>`;}).join('')||'<p class="muted">Nenhuma solicitação de remarcação em andamento.</p>'}
    ${available.offers?offers.map(o=>{const w=wBy.get(o.waitlist_id);const a=(appointments||[]).find(x=>x.id===w?.appointment_id);return `<div class="rc7-offer"><strong>Nova data proposta</strong><p>${esc(a?.service_name_snapshot||'Atendimento')} • ${date(o.start_at)} até ${date(o.end_at)}</p><div class="actions"><button class="btn gold" data-reply-offer="${esc(o.id)}" data-accept="1">Aceitar proposta</button><button class="btn" data-reply-offer="${esc(o.id)}" data-accept="0">Recusar</button></div><small class="muted">O aceite será revisado pela profissional antes da confirmação definitiva.</small></div>`;}).join(''):'<p class="muted">As propostas de horários serão liberadas após a integração da agenda.</p>'}</section>`:unavailable('Remarcações e lista de espera')}
-   ${available.refunds&&claimable.length?`<section class="glass panel rc7-portal"><h2>Reembolsos disponíveis</h2>${claimable.map(a=>`<div class="row"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>Valor do sinal: ${money(a.deposit_amount)}</span></div><button class="btn gold" data-request-refund="${esc(a.id)}">Escolher devolução</button></div>`).join('')}</section>`:''}
+   ${available.refunds&&claimable.length?`<section class="glass panel rc7-portal"><h2>Reembolsos disponíveis</h2>${claimable.map(a=>`<div class="row"><div><b>${esc(a.service_name_snapshot||'Atendimento')}</b><span>Valor do sinal: ${money(a.deposit_amount)}</span></div><button class="btn gold" data-request-refund="${esc(a.id)}">Solicitar devolução por Pix</button></div>`).join('')}</section>`:''}
    ${available.refunds&&(data.refunds||[]).length?`<section class="glass panel rc7-portal"><h2>Devoluções solicitadas</h2>${data.refunds.map(r=>`<div class="row"><div><b>${money(r.amount)}</b><span>${r.destination==='credit'?'Crédito':'Pix'} • ${esc(r.status)}</span></div></div>`).join('')}</section>`:''}
    ${available.notifications?`<section class="glass panel rc7-portal"><h2>Avisos</h2>${todayMsg.map(n=>`<div class="rc7-notice"><b>${esc(n.event_type==='refund_completed'?'Reembolso concluído':n.event_type)}</b><p>${esc(n.body)}</p><small>${date(n.created_at)}</small></div>`).join('')||'<p class="muted">Nenhum aviso novo.</p>'}</section>`:unavailable('Avisos')}`;
   $$('[data-reply-offer]',extra).forEach(b=>b.onclick=async()=>{b.disabled=true;try{await DDB.replySlotOffer(b.dataset.replyOffer,b.dataset.accept==='1');await renderAccount(box,appointments);}catch(e){alert(message(e));}finally{b.disabled=false;}});
@@ -36,11 +36,10 @@ async function renderAccount(box, appointments){
 function openRefundForm(appointmentId,box,appointments){
  const existing=$('#rc7RefundForm',box);if(existing)existing.remove();
  const form=document.createElement('section');form.id='rc7RefundForm';form.className='glass panel rc7-refund';
- form.innerHTML=`<h2>Destino do sinal</h2><p class="muted">Escolha como deseja receber o valor reembolsável. Esta escolha será registrada uma única vez.</p><div class="form-grid"><label>Destino<select name="destination"><option value="pix">Receber por Pix</option><option value="credit">Manter como crédito na D&D</option></select></label><div class="rc7-pix-fields"><label>Tipo de chave Pix<select name="pixType"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="phone">Telefone</option><option value="email">E-mail</option><option value="random">Aleatória</option></select></label><label>Chave Pix<input name="pixKey" autocomplete="off" required></label></div></div><div class="actions"><button class="btn gold" data-submit-refund>Enviar solicitação</button><button class="btn" data-cancel-refund>Voltar</button></div><p id="rc7RefundFeedback" class="muted"></p>`;
+ form.innerHTML=`<h2>Devolução por Pix</h2><p class="muted">Informe sua chave Pix para solicitar a devolução do valor reembolsável. O pedido só pode ser feito uma vez.</p><div class="form-grid"><div class="rc7-pix-fields"><label>Tipo de chave Pix<select name="pixType"><option value="cpf">CPF</option><option value="cnpj">CNPJ</option><option value="phone">Telefone</option><option value="email">E-mail</option><option value="random">Aleatória</option></select></label><label>Chave Pix<input name="pixKey" autocomplete="off" required></label></div></div><div class="actions"><button class="btn gold" data-submit-refund>Enviar solicitação</button><button class="btn" data-cancel-refund>Voltar</button></div><p id="rc7RefundFeedback" class="muted"></p>`;
  box.prepend(form);form.scrollIntoView({behavior:'smooth',block:'center'});
- $('[name="destination"]',form).onchange=e=>$('.rc7-pix-fields',form).classList.toggle('hidden',e.target.value!=='pix');
  $('[data-cancel-refund]',form).onclick=()=>form.remove();
- $('[data-submit-refund]',form).onclick=async()=>{const destination=$('[name="destination"]',form).value,pixType=$('[name="pixType"]',form).value,pixKey=$('[name="pixKey"]',form).value.trim();if(destination==='pix'&&!window.DDBLogic.pixKeyValid(pixType,pixKey))return $('#rc7RefundFeedback',form).textContent='Confira o formato da chave Pix.';const btn=$('[data-submit-refund]',form);btn.disabled=true;try{await DDB.requestRefund(appointmentId,destination,destination==='pix'?pixType:null,destination==='pix'?pixKey:null);form.remove();await renderAccount(box,appointments);}catch(e){$('#rc7RefundFeedback',form).textContent=message(e);}finally{btn.disabled=false;}};
+ $('[data-submit-refund]',form).onclick=async()=>{const pixType=$('[name="pixType"]',form).value,pixKey=$('[name="pixKey"]',form).value.trim();if(!window.DDBLogic.pixKeyValid(pixType,pixKey))return $('#rc7RefundFeedback',form).textContent='Confira o formato da chave Pix.';const btn=$('[data-submit-refund]',form);btn.disabled=true;try{await DDB.requestRefund(appointmentId,'pix',pixType,pixKey);form.remove();await renderAccount(box,appointments);}catch(e){$('#rc7RefundFeedback',form).textContent=message(e);}finally{btn.disabled=false;}};
 }
 function renderAdmin(state,withPin,onRefresh){
  const root=$('#rc7Admin');if(!root||adminBusy)return;
@@ -53,9 +52,17 @@ function renderAdmin(state,withPin,onRefresh){
   const offerBy=new Map((d.offers||[]).filter(o=>o.status==='accepted_pending_admin').map(o=>[o.waitlist_id,o]));
   const waiting=(d.waitlist||[]).filter(w=>['waiting','offer_pending','accepted_pending_admin'].includes(w.status));
   const refundRequests=d.refunds||[];
+  const legacyBalances=new Map();
+  for(const row of (d.ledger||[])){
+    const key=String(row.client_user_id||'');
+    if(!key)continue;
+    legacyBalances.set(key,(legacyBalances.get(key)||0)+Number(row.amount||0));
+  }
+  const outstanding=[...legacyBalances.values()].filter(amount=>amount>0.005);
+  const outstandingTotal=outstanding.reduce((sum,amount)=>sum+amount,0);
   const refundByAppointment=new Map(refundRequests.map(r=>[r.appointment_id,r]));
-  // A cancellation can have an unpaid operational refund task BEFORE
-  // the customer chooses Pix or credit. It must not vanish from admin.
+  // A cancellation can have an unpaid Pix refund task BEFORE
+  // the customer submits their Pix key. It must not vanish from admin.
   const awaitingDestination=appointments.filter(a=>a.status==='cancelled'
     &&a.refundStatus==='pending'
     &&Number(a.bookingFeeAmount||0)>0
@@ -73,21 +80,22 @@ function renderAdmin(state,withPin,onRefresh){
       <div class="form-grid"><label>Tempo livre (minutos)<input type="number" min="0" step="15" id="rc7Minutes" placeholder="Ex.: 180"></label><label>Ordenar<select id="rc7Order"><option value="oldest">Mais tempo aguardando</option><option value="shortest">Procedimento mais curto</option><option value="longest">Procedimento mais longo</option></select></label></div>
       <div id="rc7WaitRows"></div>
     </section>
-    <section class="glass panel rc7-admin-panel">
+    ${outstanding.length?`<section class="glass panel rc7-admin-panel"><h2>Regularização de saldos anteriores</h2><p class="muted">Há ${outstanding.length} cliente(s) com ${money(outstandingTotal)} ainda a regularizar. Não conceda novos créditos. Consulte o histórico financeiro e organize a devolução manual via Pix antes do encerramento definitivo.</p></section>`:''}
+    <section class="glass panel rc7-admin-panel rc7-refunds-panel">
       <div class="between"><h2>Devoluções via Pix</h2><b class="rc7-section-count">${awaitingDestination.length+pendingRefunds.length}</b></div>
-      <p class="muted">Acompanhe os sinais de atendimentos cancelados. A cliente deve escolher Pix ou crédito antes que uma devolução seja processada.</p>
-      ${awaitingDestination.length?`<h3>Cancelamentos aguardando escolha</h3>${awaitingDestination.map(a=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(a.clientName||'Cliente')}</b><p class="muted">${esc(a.serviceName||'Atendimento')} • ${esc(a.date||'Data não informada')}</p></div><strong>${money(a.bookingFeeAmount)}</strong></div><p class="rc7-pending-status">Aguardando a cliente escolher: Pix ou crédito</p></div>`).join('')}`:`<p class="muted">Nenhum cancelamento aguardando escolha do destino do sinal.</p>`}
+      <p class="muted">Acompanhe os sinais cancelados e as devoluções exclusivamente via Pix. A transferência é manual e só deve ser concluída depois da conferência.</p>
+      ${awaitingDestination.length?`<h3>Cancelamentos aguardando escolha</h3>${awaitingDestination.map(a=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(a.clientName||'Cliente')}</b><p class="muted">${esc(a.serviceName||'Atendimento')} • ${esc(a.date||'Data não informada')}</p></div><strong>${money(a.bookingFeeAmount)}</strong></div><p class="rc7-pending-status">Aguardando chave Pix da cliente</p></div>`).join('')}`:`<p class="muted">Nenhum cancelamento aguardando escolha do destino do sinal.</p>`}
       <h3>Pix aguardando transferência</h3>
       ${pendingRefunds.map(r=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(refundAppointmentName(r))}</b><p class="muted">${esc(refundAppointmentService(r))} • Chave Pix (${esc(r.pix_type||'—')})</p></div><strong>${money(r.amount)}</strong></div><p class="rc7-pix-key"><code>${esc(r.pix_key||'Chave não informada')}</code></p><button type="button" class="btn gold" data-refund-done="${esc(r.id)}">Já transferi — concluir</button></div>`).join('')||'<p class="muted">Nenhum Pix aguardando transferência.</p>'}
-      ${otherRefunds.length?`<h3>Outros destinos e histórico</h3>${otherRefunds.map(r=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(refundAppointmentName(r))}</b><p class="muted">${esc(refundAppointmentService(r))} • ${r.destination==='credit'?'Crédito':'Pix'} • ${esc(r.status||'Registrado')}</p></div><strong>${money(r.amount)}</strong></div></div>`).join('')}`:''}
+      ${otherRefunds.length?`<h3>Histórico de devoluções</h3>${otherRefunds.map(r=>`<div class="rc7-refund-row rc7-pending-item"><div class="rc7-pending-item-main"><div><b>${esc(refundAppointmentName(r))}</b><p class="muted">${esc(refundAppointmentService(r))} • ${r.destination==='credit'?'Conversão antiga registrada':'Pix'} • ${esc(r.status||'Registrado')}</p></div><strong>${money(r.amount)}</strong></div></div>`).join('')}`:''}
     </section>
   </div>`;
   // Módulos de RC7 ainda não migrados não devem exibir botões que inevitavelmente falharão.
-  const adminSections=[...root.querySelectorAll('.rc7-admin-grid > section')];
+  const adminSections=[...root.querySelectorAll('.rc7-admin-grid > section')];const refundSection=root.querySelector('.rc7-refunds-panel');
   const waitlistReady=!!d.available?.waitlist && !!d.available?.offers;
   const refundReady=!!d.available?.refunds;
   if(!waitlistReady && adminSections[0])adminSections[0].innerHTML='<h2>Lista de espera</h2><p class="muted">A lista de espera e as propostas de horário ainda precisam ser ativadas no Supabase. Nenhum agendamento foi alterado.</p>';
-  if(!refundReady && adminSections[1])adminSections[1].insertAdjacentHTML('beforeend','<p class="muted">Não foi possível consultar pedidos de Pix/crédito no momento. A lista acima exibe apenas cancelamentos conhecidos pelo sistema; atualize para conferir novas solicitações.</p>');
+  if(!refundReady && refundSection)refundSection.insertAdjacentHTML('beforeend','<p class="muted">Não foi possível consultar pedidos de devolução via Pix no momento. A lista acima exibe apenas cancelamentos conhecidos pelo sistema; atualize para conferir novas solicitações.</p>');
   if(waitlistReady){
   function drawWaiting(){const mins=$('#rc7Minutes',root).value,sort=$('#rc7Order',root).value;const entries=waiting.map(w=>{const a=apptBy.get(w.appointment_id);return {...w,duration_minutes:a?.durationMinutes||0,clientName:a?.clientName||'',procedureName:a?.serviceName||a?.procedureId||'Atendimento'};});
    const ordered=window.DDBLogic.eligibleWaitlist(entries,mins,sort);const unknown=entries.filter(x=>!x.duration_minutes);const visible=mins===''?[...ordered,...unknown]:ordered;

@@ -415,7 +415,7 @@ async function renderAccount(){
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
     const details=hasPaidDeposit
-      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento, crédito e eventual reembolso da D&D; o cancelamento não gera devolução automática.'
+      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento e eventual devolução via Pix da D&D; o cancelamento não gera devolução automática.'
       : 'Se o cancelamento for permitido pelas regras da agenda, esta solicitação será encerrada.';
     askConfirm({
       title:'Confirmar cancelamento',

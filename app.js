@@ -360,7 +360,7 @@ function statusLabel(a){
 
 function buildMessage(kind,a,extra={}){
   const db=getState(), t=db.settings.messages[kind]||'';
-  const p=getProfessional(a.professionalId), reembolso=a.bookingFeePaid?' Se houver valor reembolsável, você poderá solicitar Pix ou crédito pelo portal.':'';
+  const p=getProfessional(a.professionalId), reembolso=a.bookingFeePaid?' Se houver valor reembolsável, você poderá solicitar sua devolução via Pix pelo portal.':'';
   const sinal=a.bookingFeePaid?' O sinal já pago acompanha a nova data; não é necessário pagar novamente.':'';
   const values={
     cliente:a.clientName||'', profissional:p?.name||'', procedimento:procedureName(a), data:fmtDate(extra.date||a.date), horario:extra.time||a.time||a.period||'', valor:money(a.price||0), taxa:money(a.bookingFeeAmount||0), pix:p?.pixKey||'', motivos:(extra.reasons||[]).join(', '), link:extra.link||'', reembolso, sinal
@@ -2285,7 +2285,7 @@ async function renderAccount(){
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
     const details=hasPaidDeposit
-      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento, crédito e eventual reembolso da D&D; o cancelamento não gera devolução automática.'
+      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento e eventual devolução via Pix da D&D; o cancelamento não gera devolução automática.'
       : 'Se o cancelamento for permitido pelas regras da agenda, esta solicitação será encerrada.';
     askConfirm({
       title:'Confirmar cancelamento',

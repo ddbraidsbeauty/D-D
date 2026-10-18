@@ -221,7 +221,7 @@
     async adminOfferSlot(waitlistId,start,end){return rpc('ddb_admin_offer_slot',{p_waitlist_id:waitlistId,p_start_at:start,p_end_at:end});},
     async replySlotOffer(id,accept){return rpc('ddb_reply_offer',{p_offer_id:id,p_accept:!!accept});},
     async finishSlotOffer(id){return rpc('ddb_admin_finish_offer',{p_offer_id:id});},
-    async requestRefund(appointmentId,destination,pixType=null,pixKey=null){return rpc('ddb_request_refund',{p_appointment_id:appointmentId,p_destination:destination,p_pix_type:pixType,p_pix_key:pixKey});},
+    async requestRefund(appointmentId,destination,pixType=null,pixKey=null){if(destination!=='pix')throw new Error('A D&D realiza devoluções somente via Pix.');return rpc('ddb_request_refund',{p_appointment_id:appointmentId,p_destination:'pix',p_pix_type:pixType,p_pix_key:pixKey});},
     async finishRefundRequest(id,operatorId){return rpc('ddb_admin_finish_refund',{p_request_id:id,p_operator_id:operatorId});},
     async saveMaterialPrice(proId,variantId,price){return rpc('ddb_save_material_price',{p_professional_id:proId,p_variant_id:variantId,p_price:price});},
     async adminSnapshot(){
