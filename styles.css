@@ -482,8 +482,8 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
    Somente o destaque principal; não alterar o crop dos cards nem desktop. */
 @media (max-width: 1000px) {
   #home .heroimg:not(.no-photo) {
-    height: auto;
-    aspect-ratio: 1 / 1;
+    height: clamp(300px, 70vw, 360px);
+    aspect-ratio: auto;
   }
   #home .heroimg:not(.no-photo) > img {
     position: absolute;
