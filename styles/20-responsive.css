@@ -182,12 +182,14 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
   .modalbox #modalBody>.form>button.btn{width:100%}
 }
 
-/* Hero em tela estreita: preservar rostos quando a foto passa abaixo do texto.
-   Somente o destaque principal; não alterar o crop dos cards nem desktop. */
+/* Quando o destaque passa para baixo do texto, segue o tamanho dos cards
+   das profissionais: 320px de largura máxima e retrato 4:5. Desktop intacto. */
 @media (max-width: 1000px) {
   #home .heroimg:not(.no-photo) {
-    height: clamp(300px, 70vw, 360px);
-    aspect-ratio: auto;
+    width: min(100%, 320px);
+    height: auto;
+    aspect-ratio: 4 / 5;
+    margin-inline: auto;
   }
   #home .heroimg:not(.no-photo) > img {
     position: absolute;
@@ -197,5 +199,9 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
     height: 100%;
     object-fit: cover;
     object-position: center top;
+  }
+  #home .heroimg:not(.no-photo) .float {
+    left: 10px;
+    bottom: 10px;
   }
 }
