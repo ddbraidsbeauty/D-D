@@ -203,8 +203,8 @@
     // RC7 workflows. Every write invokes a server-authorized RPC; no direct browser table mutation.
     async rc7Portal(){
       // An unavailable optional module must never hide working portal modules.
-      const names=['waitlist','offers','refunds','ledger','notifications'];
-      const relations=['ddb_waitlist','ddb_offers','ddb_refund_requests','ddb_wallet_ledger','ddb_notifications'];
+      const names=['waitlist','offers','refunds','notifications'];
+      const relations=['ddb_waitlist','ddb_offers','ddb_refund_requests','ddb_notifications'];
       const results=await Promise.allSettled(relations.map(name=>table(name)));
       const data={available:{}};
       for(let i=0;i<names.length;i++){
@@ -221,7 +221,7 @@
     async adminOfferSlot(waitlistId,start,end){return rpc('ddb_admin_offer_slot',{p_waitlist_id:waitlistId,p_start_at:start,p_end_at:end});},
     async replySlotOffer(id,accept){return rpc('ddb_reply_offer',{p_offer_id:id,p_accept:!!accept});},
     async finishSlotOffer(id){return rpc('ddb_admin_finish_offer',{p_offer_id:id});},
-    async requestRefund(appointmentId,destination,pixType=null,pixKey=null){return rpc('ddb_request_refund',{p_appointment_id:appointmentId,p_destination:destination,p_pix_type:pixType,p_pix_key:pixKey});},
+    async requestRefund(appointmentId,destination,pixType=null,pixKey=null){if(destination!=='pix')throw Error('Os reembolsos da D&D são feitos exclusivamente por Pix.');return rpc('ddb_request_refund',{p_appointment_id:appointmentId,p_destination:'pix',p_pix_type:pixType,p_pix_key:pixKey});},
     async finishRefundRequest(id,operatorId){return rpc('ddb_admin_finish_refund',{p_request_id:id,p_operator_id:operatorId});},
     async saveMaterialPrice(proId,variantId,price){return rpc('ddb_save_material_price',{p_professional_id:proId,p_variant_id:variantId,p_price:price});},
     async adminSnapshot(){

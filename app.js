@@ -360,7 +360,7 @@ function statusLabel(a){
 
 function buildMessage(kind,a,extra={}){
   const db=getState(), t=db.settings.messages[kind]||'';
-  const p=getProfessional(a.professionalId), reembolso=a.bookingFeePaid?' Se houver valor reembolsável, você poderá solicitar Pix ou crédito pelo portal.':'';
+  const p=getProfessional(a.professionalId), reembolso=a.bookingFeePaid?' Se houver valor reembolsável, a devolução deverá ser solicitada por Pix pelo portal.':'';
   const sinal=a.bookingFeePaid?' O sinal já pago acompanha a nova data; não é necessário pagar novamente.':'';
   const values={
     cliente:a.clientName||'', profissional:p?.name||'', procedimento:procedureName(a), data:fmtDate(extra.date||a.date), horario:extra.time||a.time||a.period||'', valor:money(a.price||0), taxa:money(a.bookingFeeAmount||0), pix:p?.pixKey||'', motivos:(extra.reasons||[]).join(', '), link:extra.link||'', reembolso, sinal
@@ -1339,9 +1339,10 @@ async function nextBookingStep(){
 /* === 60-admin.js: begin === */
 /* ===== admin.js ===== */
 const modules = [
-  ['overview','⌂','Visão geral'],['requests','◷','Solicitações'],['bookings','▣','Agendamentos'],['workflows','⇄','Pendências'],['clients','♙','Clientes'],['catalog','✂','Catálogo'],['finance','$','Financeiro'],['professionals','♛','Profissionais'],['posts','▧','Criador de Posts'],['history','↺','Histórico'],['settings','⚙','Configurações']
+  ['overview','⌂','Visão geral'],['attendances','▣','Atendimentos'],['workflows','⇄','Pendências'],['clients','♙','Clientes'],['catalog','✂','Catálogo'],['finance','$','Financeiro'],['professionals','♛','Profissionais'],['posts','▧','Criador de Posts'],['history','↺','Histórico'],['settings','⚙','Configurações']
 ];
 let currentModule='overview';
+let currentAttendanceSection='bookings';
 let adminPreviewMode=false;
 let agendaMonth=new Date().getMonth(), agendaYear=new Date().getFullYear(), agendaDate=todayISO(), agendaPro='all';
 let financeMonth=new Date().getMonth(), financeYear=new Date().getFullYear(), financeDate=todayISO(), financeMode='cashflow', financePro='all', financeFrom='', financeTo='';
@@ -1406,7 +1407,7 @@ function pendingCounts(){
   const bookings=tasks.filter(t=>['cancelled_slot','reschedule'].includes(t.type)).length;
   const finance=db.appointments.filter(isRefundPending).length + db.appointments.filter(a=>isConfirmed(a)&&!a.paid).length;
   const clients=db.appointments.filter(a=>isRequest(a)&&!a.anamnesisReviewed&&['pending_review','non_recommended','acknowledged'].includes(a.status)).length;
-  return {overview:requests+bookings+finance,requests,bookings,finance,clients};
+  return {overview:requests+bookings+finance,attendances:requests+bookings,finance,clients};
 }
 function renderAdminNav(){
   const counts=pendingCounts();
@@ -1418,7 +1419,7 @@ function refreshAdmin(){ if(!$('#adminRoot').classList.contains('hidden'))render
 
 function renderModule(){
   renderAdminNav();
-  const map={overview:renderOverview,requests:renderRequests,bookings:renderBookings,clients:renderClients,catalog:renderCatalogAdmin,finance:renderFinance,professionals:renderProfessionals,posts:renderPosts,history:renderHistory,settings:renderSettings,workflows:()=>'<div id="rc7Admin"></div>'};
+  const map={overview:renderOverview,attendances:renderAttendances,clients:renderClients,catalog:renderCatalogAdmin,finance:renderFinance,professionals:renderProfessionals,posts:renderPosts,history:renderHistory,settings:renderSettings,workflows:()=>'<div id="rc7Admin"></div>'};
   $('#moduleBody').innerHTML=map[currentModule]?.()||'';
   bindModule(currentModule);
   if(currentModule==='workflows'){
@@ -1454,6 +1455,34 @@ function renderOverview(){
 }
 function compactRow(a,button,attr){return `<div class="row compact"><div><b>${esc(a.clientName)}</b><span>${esc(procedureName(a))} • ${money(attr==='data-pay'?balanceAmount(a):a.bookingFeeAmount)}</span></div><button class="btn small" ${attr}="${a.id}">${button}</button></div>`;}
 
+/* Atendimentos: apenas o módulo fica no menu; abas internas preservam fluxos existentes. */
+const attendanceSections=[
+ ['bookings','Agendamentos'],['requests','Solicitações'],['reschedules','Remarcações'],
+ ['cancellations','Cancelamentos'],['nonrecommended','Não recomendados']
+];
+function renderAttendanceList(title,description,items,empty){
+ return `<section class="glass admin-list"><h2>${title}</h2><p class="muted">${description}</p>
+ ${items.length?items.map(requestRow).join(''):`<p class="empty-state">${empty}</p>`}</section>`;
+}
+function renderAttendances(){
+ const appointments=getState().appointments||[];
+ let body='';
+ if(currentAttendanceSection==='bookings')body=renderBookings();
+ else if(currentAttendanceSection==='requests')body=renderRequests();
+ else if(currentAttendanceSection==='reschedules')body=renderAttendanceList('Remarcações','Pedidos de alteração de data aguardando tratamento.',
+   appointments.filter(a=>a.status==='reschedule_requested'),'Nenhuma remarcação pendente.');
+ else if(currentAttendanceSection==='nonrecommended')body=renderAttendanceList('Não recomendados','Atendimentos marcados como não recomendados pela profissional.',
+   appointments.filter(a=>a.status==='non_recommended'),'Nenhum atendimento não recomendado.');
+ else {
+   const cancelled=appointments.filter(a=>a.status==='cancelled');
+   body=`<section class="glass admin-list"><h2>Cancelamentos</h2><p class="muted">Atendimentos cancelados. Devoluções pendentes são tratadas por Pix em Pendências.</p>
+   ${cancelled.map(a=>`<article class="request-card"><div class="between"><div><b>${esc(a.clientName||'Cliente')}</b><span>${esc(procedureName(a))} • ${fmtDate(a.date)}</span></div><span class="status cancelled">Cancelado</span></div>
+   ${isRefundPending(a)?'<div class="request-actions"><button type="button" class="btn" data-go="workflows">Ver devoluções via Pix</button></div>':''}</article>`).join('')||'<p class="empty-state">Nenhum cancelamento registrado.</p>'}</section>`;
+ }
+ const tabs=`<div class="attention-tabs" role="tablist" aria-label="Seções de Atendimentos">${attendanceSections.map(([id,label])=>
+  `<button type="button" role="tab" aria-selected="${currentAttendanceSection===id}" class="btn attention-tab ${currentAttendanceSection===id?'gold':''}" data-attention-section="${id}">${label}</button>`).join('')}</div>`;
+ return tabs+body;
+}
 function renderRequests(){
   const list=getState().appointments.filter(isRequest).sort((a,b)=>b.createdAt-a.createdAt);
   return `<div class="glass admin-list"><div class="between"><div><h2>Solicitações</h2><p class="muted">Somente atendimentos ainda não confirmados.</p></div><input class="field compact-search" id="requestSearch" placeholder="Buscar cliente..."></div><div id="requestRows">${list.map(requestRow).join('')||`<p class="empty-state">Nenhuma solicitação pendente.</p>`}</div></div>`;
@@ -1579,8 +1608,11 @@ function bindModule(id){
   $$('[data-refund]').forEach(b=>b.onclick=()=>markRefunded(b.dataset.refund));
   $$('[data-cancel]').forEach(b=>b.onclick=()=>cancelAppointment(b.dataset.cancel));
   if(id==='overview'){ $$('[data-overview-offer]').forEach(b=>b.onclick=()=>offerSlot(b.dataset.overviewOffer));$$('[data-overview-resolve]').forEach(b=>b.onclick=()=>resolveTask(b.dataset.overviewResolve,'Pendência encerrada')); }
-  if(id==='requests') bindRequests();
-  if(id==='bookings') bindBookings();
+  if(id==='attendances'){
+    $$('[data-attention-section]').forEach(b=>b.onclick=()=>{currentAttendanceSection=b.dataset.attentionSection;renderModule();});
+    if(currentAttendanceSection==='bookings')bindBookings();
+    if(['requests','reschedules','nonrecommended'].includes(currentAttendanceSection))bindRequests();
+  }
   if(id==='clients') bindClients();
   if(id==='catalog') bindCatalog();
   if(id==='finance') bindFinance();
@@ -2118,7 +2150,6 @@ function clientDepositLabel(status){
   if(status==='paid')return 'Sinal pago ✓';
   if(status==='refund_pending')return 'Sinal pago • destino pendente';
   if(status==='refunded')return 'Sinal reembolsado';
-  if(status==='credited')return 'Sinal convertido em crédito';
   return 'Sinal pendente';
 }
 function clientCancellationError(error){
@@ -2285,7 +2316,7 @@ async function renderAccount(){
     if(!selected)return;
     const hasPaidDeposit=selected.deposit_status==='paid';
     const details=hasPaidDeposit
-      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento, crédito e eventual reembolso da D&D; o cancelamento não gera devolução automática.'
+      ? 'Existe um sinal pago. O valor seguirá as regras de cancelamento e eventual devolução por Pix da D&D; o cancelamento não gera devolução automática.'
       : 'Se o cancelamento for permitido pelas regras da agenda, esta solicitação será encerrada.';
     askConfirm({
       title:'Confirmar cancelamento',

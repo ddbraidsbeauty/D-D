@@ -501,3 +501,8 @@ input[type="file"]::file-selector-button{border:1px solid var(--line);background
     bottom: 10px;
   }
 }
+
+/* Atendimentos: abas internas, mantendo o menu lateral somente para módulos. */
+.attention-tabs{display:flex;flex-wrap:wrap;align-items:center;gap:10px;margin:0 0 20px}
+.attention-tab{min-height:42px;white-space:normal;text-align:center}
+@media(max-width:700px){.attention-tabs{gap:8px}.attention-tab{flex:1 1 auto;font-size:12px;padding:9px 10px}}
