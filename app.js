@@ -1403,11 +1403,12 @@ async function restoreAdminSessionOnLoad(){
 
 function pendingCounts(){
   const db=getState(), tasks=(db.operationalTasks||[]).filter(t=>!t.resolvedAt);
-  const requests=db.appointments.filter(isRequest).length;
+  const requests=db.appointments.filter(a=>isRequest(a)&&!['reschedule_requested','non_recommended','acknowledged'].includes(a.status)).length;
+  const separate=db.appointments.filter(a=>['reschedule_requested','non_recommended','acknowledged'].includes(a.status)).length;
   const bookings=tasks.filter(t=>['cancelled_slot','reschedule'].includes(t.type)).length;
   const finance=db.appointments.filter(isRefundPending).length + db.appointments.filter(a=>isConfirmed(a)&&!a.paid).length;
   const clients=db.appointments.filter(a=>isRequest(a)&&!a.anamnesisReviewed&&['pending_review','non_recommended','acknowledged'].includes(a.status)).length;
-  return {overview:requests+bookings+finance,attendances:requests+bookings,finance,clients};
+  return {overview:requests+bookings+separate+finance,attendances:requests+bookings+separate,finance,clients};
 }
 function renderAdminNav(){
   const counts=pendingCounts();
@@ -1443,7 +1444,7 @@ function renderModule(){
 }
 
 function metrics(){
-  const db=getState(), today=todayISO(), pending=db.appointments.filter(isRequest).length, todayAppts=db.appointments.filter(a=>isConfirmed(a)&&a.date===today).length, unpaid=db.appointments.filter(a=>isConfirmed(a)&&!a.paid).length, refunds=db.appointments.filter(isRefundPending).length;
+  const db=getState(), today=todayISO(), pending=db.appointments.filter(a=>isRequest(a)&&!['reschedule_requested','non_recommended','acknowledged'].includes(a.status)).length, todayAppts=db.appointments.filter(a=>isConfirmed(a)&&a.date===today).length, unpaid=db.appointments.filter(a=>isConfirmed(a)&&!a.paid).length, refunds=db.appointments.filter(isRefundPending).length;
   return {pending,todayAppts,unpaid,refunds};
 }
 function renderOverview(){
@@ -1472,7 +1473,7 @@ function renderAttendances(){
  else if(currentAttendanceSection==='reschedules')body=renderAttendanceList('Remarcações','Pedidos de alteração de data aguardando tratamento.',
    appointments.filter(a=>a.status==='reschedule_requested'),'Nenhuma remarcação pendente.');
  else if(currentAttendanceSection==='nonrecommended')body=renderAttendanceList('Não recomendados','Atendimentos marcados como não recomendados pela profissional.',
-   appointments.filter(a=>a.status==='non_recommended'),'Nenhum atendimento não recomendado.');
+   appointments.filter(a=>['non_recommended','acknowledged'].includes(a.status)),'Nenhum atendimento não recomendado.');
  else {
    const cancelled=appointments.filter(a=>a.status==='cancelled');
    body=`<section class="glass admin-list"><h2>Cancelamentos</h2><p class="muted">Atendimentos cancelados. Devoluções pendentes são tratadas por Pix em Pendências.</p>
@@ -1484,7 +1485,7 @@ function renderAttendances(){
  return tabs+body;
 }
 function renderRequests(){
-  const list=getState().appointments.filter(isRequest).sort((a,b)=>b.createdAt-a.createdAt);
+  const list=getState().appointments.filter(a=>isRequest(a)&&!['reschedule_requested','non_recommended','acknowledged'].includes(a.status)).sort((a,b)=>b.createdAt-a.createdAt);
   return `<div class="glass admin-list"><div class="between"><div><h2>Solicitações</h2><p class="muted">Somente atendimentos ainda não confirmados.</p></div><input class="field compact-search" id="requestSearch" placeholder="Buscar cliente..."></div><div id="requestRows">${list.map(requestRow).join('')||`<p class="empty-state">Nenhuma solicitação pendente.</p>`}</div></div>`;
 }
 function requestRow(a){
